@@ -110,8 +110,8 @@ attach mode. Report: `docs/reports/M9-mcp-server.md`.
   colour mixing (Blend/Running/Smear), texture, spray, dual brush, starting/ending,
   watercolor edge, PSD import/export, workspace/shortcut customization.
 
-**Part 2 (started 2026-11-14): selections.** Observed S-001, U-016; storage proposal D-024
-(PROPOSAL). Open observation: ellipse/lasso edge rasterization (analysis), painting inside a
+**Part 2 (started 2026-11-14): selections.** Observed S-001, U-016; storage decision D-024
+(accepted). Open observation: ellipse/lasso edge rasterization (analysis), painting inside a
 selection (virtual pen), selection modes, Polyline, Selection pen/eraser, Auto select.
 
 ## M11 — .clip import

@@ -709,8 +709,8 @@ crates/
   - New command versions for each extension: unnecessary while old meanings are unchanged.
 - **No new dependencies.**
 
-## D-024 Selections: storage, commands, file format — PROPOSAL
-- **Date:** proposed 2026-11-14 (M10, after S-001/U-016).
+## D-024 Selections: storage, commands, file format — ACCEPTED (2026-11-14)
+- **Date:** proposed 2026-11-14 (M10, after S-001/U-016); accepted by the maintainer the same day.
 - **Scope:** behaviour follows CSP 1.13.2 from observation: S-001 and U-016 so far, more runs
   for the open items. This entry covers only how Brushye stores and addresses a selection.
 - **Proposal:**

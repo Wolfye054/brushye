@@ -1,5 +1,7 @@
 # U-016 Selection tool, Selection Launcher, marching ants
-- Status: **observed** (layout from screenshots; tooltips by hovering)
+- Status: **implemented** (2026-11-14: tool, sub tools, Tool property rows, Select menu, marching
+  ants, Launcher; Aspect type, Adjust angle, Shrink selection and the disabled Launcher buttons
+  wait on their features) / **observed** (layout from screenshots; tooltips by hovering)
 - CSP version: 1.13.2 (PRO, 64-bit, build 202301210208)
 - Date / method / observer: 2026-11-14 / automated-Wine (Xvfb :77, XTEST) / Claude
 - Screenshots: `obs-out/m10/sel/u016_*.png` (not committed).
@@ -31,4 +33,6 @@
 ## Open questions
 - Selection Launcher position when the selection is near the canvas bottom, and the Launcher
   Settings dialog.
-- Selection mode buttons (add, subtract, intersect) and their modifier keys.
+- Modifier keys for the selection modes (the buttons themselves: S-001 run 2).
+- Polyline closing gesture (Brushye: click the first corner, double-click or Enter; Esc
+  cancels) and a click without a drag (Brushye: nothing): not observed.

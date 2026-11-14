@@ -383,6 +383,7 @@ fn map(name: &str, row: &Row) -> Result<SubTool, SutError> {
         opacity_curve,
         density_pressure,
         density_curve,
+        mode: None,
     };
     notes.extend(unmapped(row));
     preset

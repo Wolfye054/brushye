@@ -52,7 +52,7 @@ pub fn menu_bar(app: &mut App, ui: &mut Ui) {
         ui.menu_button("Edit", |ui| edit_menu(app, ui));
         ui.menu_button("Animation", animation_menu);
         ui.menu_button("Layer", |ui| layer_menu(app, ui));
-        ui.menu_button("Select", select_menu);
+        ui.menu_button("Select", |ui| select_menu(app, ui));
         ui.menu_button("View", |ui| view_menu(app, ui));
         ui.menu_button("Filter", filter_menu);
         ui.menu_button("Window", |ui| window_menu(app, ui));
@@ -294,14 +294,14 @@ pub fn layer_context_items(app: &mut App, ui: &mut Ui) {
     ui.separator();
     let mask = app.active_mask();
     sub(ui, "Layer mask", has_layer, |ui| {
-        // No selections yet. With no selection, Mask Outside Selection hides everything and
-        // Mask Selection reveals everything (U-014, L-008 run 3).
+        // From the selection: M = S or 255 − S (S-001). With no selection, Mask Outside
+        // Selection hides everything and Mask Selection reveals everything (U-014).
         let can = mask.is_none() && app.can_edit_layer();
         if item(ui, "Mask outside selection", "", can) {
-            app.create_mask(true);
+            app.mask_from_selection(true);
         }
         if item(ui, "Mask selection", "", can) {
-            app.create_mask(false);
+            app.mask_from_selection(false);
         }
         ui.separator();
         if item(ui, "Delete mask", "", mask.is_some()) {
@@ -401,20 +401,36 @@ fn layer_menu(app: &mut App, ui: &mut Ui) {
     });
 }
 
-fn select_menu(ui: &mut Ui) {
-    off(
-        ui,
-        &["Select all", "Deselect", "Reselect", "Invert selected area"],
-    );
+fn select_menu(app: &mut App, ui: &mut Ui) {
+    let doc = app.doc().is_some();
+    let has = app.has_selection();
+    if item(ui, "Select all", "Ctrl+A", doc) {
+        app.select_all();
+    }
+    if item(ui, "Deselect", "Ctrl+D", has) {
+        app.select_none();
+    }
+    if item(ui, "Reselect", "Ctrl+Shift+D", app.can_reselect()) {
+        app.reselect();
+    }
+    if item(ui, "Invert selected area", "Ctrl+Shift+I", has) {
+        app.select_invert();
+    }
     ui.separator();
-    off(
-        ui,
-        &[
-            "Expand selected area…",
-            "Shrink selected area…",
-            "Blur border…",
-        ],
-    );
+    if item(ui, "Expand selected area…", "", has) {
+        app.dialog = Some(Dialog::Expand {
+            width: 1,
+            round: false,
+        });
+    }
+    if item(ui, "Shrink selected area…", "", has) {
+        app.dialog = Some(Dialog::Shrink {
+            width: 1,
+            round: false,
+            edge: true,
+        });
+    }
+    item(ui, "Blur border…", "", false);
     ui.separator();
     item(ui, "Select color gamut…", "", false);
     ui.separator();
@@ -725,8 +741,20 @@ pub fn shortcuts(app: &mut App, ctx: &egui::Context) {
     if shortcut(ctx, cmd | M::ALT, Key::G) {
         app.toggle_clip();
     }
+    if shortcut(ctx, cmd | M::SHIFT, Key::D) {
+        app.reselect();
+    }
+    if shortcut(ctx, cmd | M::SHIFT, Key::I) {
+        app.select_invert();
+    }
     if shortcut(ctx, cmd | M::SHIFT, Key::G) {
         app.ungroup_active();
+    }
+    if !ctx.egui_wants_keyboard_input() && shortcut(ctx, cmd, Key::A) {
+        app.select_all();
+    }
+    if shortcut(ctx, cmd, Key::D) {
+        app.select_none();
     }
     if shortcut(ctx, cmd, Key::G) {
         app.group_active();

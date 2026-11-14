@@ -22,6 +22,8 @@ use crate::ui::tools::ToolId;
 use crate::ui::{UiState, colour::Chip};
 use crate::view::View;
 
+mod selection;
+
 /// Where the samples of the current stroke come from.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Source {
@@ -41,6 +43,8 @@ struct Live {
     t0_us: u64,
     t0_s: f64,
     last: Option<[f64; 2]>,
+    /// Selection pen / Erase selection: the stroke draws the selection with this mode.
+    selection: Option<brushye_command::core::selection::SelectMode>,
 }
 
 /// Pen state from the tablet backend.
@@ -75,6 +79,17 @@ pub enum Dialog {
     /// Global pen pressure curve (CSP: File > Pen Pressure Settings).
     PenPressure {
         points: Vec<[f64; 2]>,
+    },
+    /// Select > Expand selected area (U-016).
+    Expand {
+        width: u32,
+        round: bool,
+    },
+    /// Select > Shrink selected area (U-016).
+    Shrink {
+        width: u32,
+        round: bool,
+        edge: bool,
     },
     /// Discard unsaved changes, then run the action.
     Confirm(Box<Action>),
@@ -144,6 +159,10 @@ pub struct App {
     pen_events: Vec<PenEvent>,
     pen: Pen,
     live: Option<Live>,
+    /// A selection being drawn or moved, an unfinished polyline, and the selection border.
+    sel: Option<selection::Gesture>,
+    polyline: Vec<[f64; 2]>,
+    ants: selection::Ants,
     pub(crate) dialog: Option<Dialog>,
     pub(crate) status: String,
     canvas_rect: egui::Rect,
@@ -248,6 +267,9 @@ impl App {
             pen_events: Vec::new(),
             pen: Pen::default(),
             live: None,
+            sel: None,
+            polyline: Vec::new(),
+            ants: selection::Ants::default(),
             dialog: None,
             status: String::new(),
             canvas_rect: egui::Rect::NOTHING,
@@ -647,6 +669,21 @@ impl App {
         }
     }
 
+    /// Layer > Layer Mask > Mask Outside Selection (`outside`) or Mask Selection: M = S or
+    /// 255 − S; with no selection they hide or reveal everything (S-001, U-014).
+    pub(crate) fn mask_from_selection(&mut self, outside: bool) {
+        if let Some(layer) = self.session.active_layer() {
+            self.exec(Command::MaskNew(commands::MaskNew {
+                layer,
+                fill: Some(if outside {
+                    commands::MaskFill::Outside
+                } else {
+                    commands::MaskFill::Selection
+                }),
+            }));
+        }
+    }
+
     pub(crate) fn delete_mask(&mut self) {
         if let Some(layer) = self.session.active_layer() {
             self.exec(Command::MaskDelete(commands::MaskDelete { layer }));
@@ -698,25 +735,28 @@ impl App {
     }
 
     /// Edit > Delete with no selection: clear the layer.
+    /// Edit > Delete: clears the selection, or the whole layer without one (S-001).
     pub(crate) fn clear_layer(&mut self) {
         if let Some(id) = self.session.active_layer() {
-            self.exec(Command::LayerFill(commands::LayerFill {
-                layer: id,
-                color: Rgba8([0, 0, 0, 0]),
-            }));
+            self.exec(Command::EditDelete(commands::EditDelete { layer: id }));
         }
     }
 
-    /// Edit > Fill with no selection: fill the layer with the drawing colour.
+    /// Edit > Fill: the selection (or the layer) with the drawing colour; the transparent
+    /// colour clears it.
     pub(crate) fn fill_layer(&mut self) {
         let Some(id) = self.session.active_layer() else {
             return;
         };
-        let color = match self.ui.colour.drawing() {
-            Some(c) => Rgba8([c[0], c[1], c[2], 255]),
-            None => Rgba8([0, 0, 0, 0]),
-        };
-        self.exec(Command::LayerFill(commands::LayerFill { layer: id, color }));
+        match self.ui.colour.drawing() {
+            Some(c) => {
+                self.exec(Command::EditFill(commands::EditFill {
+                    layer: id,
+                    color: Rgba8([c[0], c[1], c[2], 255]),
+                }));
+            }
+            None => self.clear_layer(),
+        }
     }
 
     pub(crate) fn toggle_lock(&mut self, alpha: bool) {
@@ -1222,7 +1262,12 @@ impl App {
 
     fn begin_stroke(&mut self, source: Source, eraser_end: bool, t0_us: u64, t0_s: f64) -> bool {
         let tool = self.stroke_tool(eraser_end);
-        if !tool.is_brush() {
+        let selection = if eraser_end {
+            None
+        } else {
+            self.selection_brush_mode()
+        };
+        if !tool.is_brush() && selection.is_none() {
             return false;
         }
         let Some(doc) = self.doc() else { return false };
@@ -1233,12 +1278,12 @@ impl App {
         let Some(layer) = doc.layer(id) else {
             return false;
         };
-        if layer.locked {
+        if layer.locked && selection.is_none() {
             self.status = format!("{} is locked", layer.name);
             return false;
         }
-        let mask = self.session.mask_selected() && layer.mask.is_some();
-        if layer.is_folder() && !mask {
+        let mask = self.session.mask_selected() && layer.mask.is_some() && selection.is_none();
+        if layer.is_folder() && !mask && selection.is_none() {
             self.status = format!("{} is a folder", layer.name);
             return false;
         }
@@ -1263,12 +1308,24 @@ impl App {
         };
         let bounds = (doc.width, doc.height);
         let target = match (&layer.mask, mask) {
+            _ if selection.is_some() => Layer::new(
+                LayerId(0),
+                "selection",
+                brushye_command::core::LayerKind::Raster,
+            ),
             (Some(m), true) => m.to_layer(bounds),
             _ => Layer::clone(layer),
         };
-        match LiveStroke::new(target, bounds, settings) {
+        // Painting is clipped to the selection (S-001); the selection pen draws the selection.
+        let clip = if selection.is_some() {
+            None
+        } else {
+            doc.selection.clone()
+        };
+        match LiveStroke::new(target, bounds, settings).map(|s| s.with_clip(clip)) {
             Ok(stroke) => {
                 self.live = Some(Live {
+                    selection,
                     stroke,
                     layer: id,
                     mask,
@@ -1339,6 +1396,10 @@ impl App {
         if live.mask {
             cmd.target = Some(commands::Target::Mask);
         }
+        if let Some(mode) = live.selection {
+            cmd.target = Some(commands::Target::Selection);
+            cmd.mode = Some(mode);
+        }
         if self.exec(Command::BrushStroke(cmd)) && live.preset.ink != Some(InkMode::Erase) {
             self.ui.colour.used();
         }
@@ -1401,6 +1462,9 @@ impl App {
                     if self.live.as_ref().is_some_and(|l| l.source == Source::Pen) {
                         self.push_sample(pos, p.pressure, p.tilt, p.twist, p.time_us);
                     }
+                    if self.sel.is_some() {
+                        self.selection_motion(pos);
+                    }
                 }
                 PenEvent::Down => {
                     let Some(p) = self.pen.last else { continue };
@@ -1413,7 +1477,8 @@ impl App {
                     {
                         continue;
                     }
-                    if !self.pen.eraser && self.tool_press(pos, alt) {
+                    if !self.pen.eraser && (self.tool_press(pos, alt) || self.selection_press(pos))
+                    {
                         continue;
                     }
                     if self.begin_stroke(Source::Pen, self.pen.eraser, p.time_us, 0.0) {
@@ -1424,6 +1489,7 @@ impl App {
                     if self.live.as_ref().is_some_and(|l| l.source == Source::Pen) {
                         self.finish_stroke();
                     }
+                    self.selection_release();
                 }
                 PenEvent::Button { .. } => {}
             }
@@ -1449,6 +1515,7 @@ impl App {
                     && self.canvas_rect.contains(pos) =>
                 {
                     if !self.tool_press(pos, alt)
+                        && !self.selection_press(pos)
                         && self.begin_stroke(Source::Mouse, false, 0, time)
                     {
                         self.push_sample(pos, None, None, None, 0);
@@ -1464,6 +1531,9 @@ impl App {
                         let t = ((time - l.t0_s) * 1e6).max(0.0) as u64;
                         self.push_sample(pos, None, None, None, t);
                     }
+                    if !self.pen.near && self.sel.is_some() {
+                        self.selection_motion(pos);
+                    }
                 }
                 egui::Event::PointerButton {
                     button: egui::PointerButton::Primary,
@@ -1475,6 +1545,13 @@ impl App {
                     .is_some_and(|l| l.source == Source::Mouse) =>
                 {
                     self.finish_stroke();
+                }
+                egui::Event::PointerButton {
+                    button: egui::PointerButton::Primary,
+                    pressed: false,
+                    ..
+                } if !self.pen.near && self.sel.is_some() => {
+                    self.selection_release();
                 }
                 _ => {}
             }
@@ -1547,7 +1624,7 @@ impl App {
         let Some(doc) = self.doc() else { return };
         // While drawing, show the live preview in place of the layer.
         let shown: Arc<Document> = match &self.live {
-            Some(l) => {
+            Some(l) if l.selection.is_none() => {
                 let mut d = Document::clone(&doc);
                 let bounds = (d.width, d.height);
                 if let Ok(layer) = d.layer_mut(l.layer) {
@@ -1561,7 +1638,7 @@ impl App {
                 }
                 Arc::new(d)
             }
-            None => doc.clone(),
+            _ => doc.clone(),
         };
         let (uploads, reset) = self.display.update(&shown);
         // Both flags must be consumed (no short-circuit), or a stale reset would wipe the
@@ -1588,6 +1665,9 @@ impl App {
                     },
                 ));
         }
+        self.selection_keys(ui);
+        self.selection_overlay(ui, &doc);
+        self.selection_stroke_preview(ui);
         self.tool_cursor(ui, &response);
         if self.live.is_some() || self.pan_drag || self.rotate_drag {
             ui.ctx().request_repaint();

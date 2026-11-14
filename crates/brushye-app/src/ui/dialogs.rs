@@ -275,6 +275,8 @@ pub fn dialogs(app: &mut App, ctx: &egui::Context) {
         Dialog::SaveDuplicate { .. } => "Save duplicate",
         Dialog::ExportPng { .. } => "Export (.png)",
         Dialog::PenPressure { .. } => "Pen pressure settings",
+        Dialog::Expand { .. } => "Expand selected area",
+        Dialog::Shrink { .. } => "Shrink selected area",
         Dialog::Confirm(_) | Dialog::Notice(_) => "Brushye",
         Dialog::McpReplace(_) => "AI client",
     };
@@ -359,6 +361,49 @@ pub fn dialogs(app: &mut App, ctx: &egui::Context) {
                     if ui.button("OK").clicked() {
                         let p = points.clone();
                         app.set_pressure_curve(p);
+                        done = true;
+                    }
+                    if ui.button("Cancel").clicked() {
+                        done = true;
+                    }
+                });
+            }
+            Dialog::Expand { width, round } => {
+                ui.horizontal(|ui| {
+                    ui.label("Expansion width");
+                    ui.add(egui::DragValue::new(width).range(1..=1000).suffix(" px"));
+                });
+                ui.horizontal(|ui| {
+                    ui.label("Expansion type");
+                    ui.selectable_value(round, false, "Square");
+                    ui.selectable_value(round, true, "Rounded");
+                });
+                ui.horizontal(|ui| {
+                    if ui.button("OK").clicked() {
+                        let (w, r) = (*width, *round);
+                        app.select_expand(w, r);
+                        done = true;
+                    }
+                    if ui.button("Cancel").clicked() {
+                        done = true;
+                    }
+                });
+            }
+            Dialog::Shrink { width, round, edge } => {
+                ui.horizontal(|ui| {
+                    ui.label("Shrinking width");
+                    ui.add(egui::DragValue::new(width).range(1..=1000).suffix(" px"));
+                });
+                ui.horizontal(|ui| {
+                    ui.label("Shrinking type");
+                    ui.selectable_value(round, false, "Square");
+                    ui.selectable_value(round, true, "Rounded");
+                });
+                ui.checkbox(edge, "Shrink at edge of canvas");
+                ui.horizontal(|ui| {
+                    if ui.button("OK").clicked() {
+                        let (w, r, e) = (*width, *round, *edge);
+                        app.select_shrink(w, r, e);
                         done = true;
                     }
                     if ui.button("Cancel").clicked() {

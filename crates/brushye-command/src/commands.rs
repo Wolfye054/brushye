@@ -462,6 +462,7 @@ params! {
         opacity_curve: Option<Curve> = opt "Opacity pressure curve points [x,y;…]",
         density_pressure: Option<u8> = opt "Pen pressure controls density; minimum in percent",
         density_curve: Option<Curve> = opt "Density pressure curve points [x,y;…]",
+        mode: Option<SelectMode> = opt "Selection mode (selection sub tools)",
         clear: Option<String> = opt "Comma-separated settings to turn off (not size)",
     }
 }

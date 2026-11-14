@@ -105,6 +105,10 @@ pub enum Row {
     Taper,
     Snapping,
     VectorMagnet,
+    // Selection area sub tools (U-016).
+    SelectMode,
+    AspectType,
+    AdjustAngle,
 }
 
 pub struct RowInfo {
@@ -137,8 +141,39 @@ const fn r(
     }
 }
 
+/// Category of the selection sub tools' rows: not part of the brush Sub Tool Detail pages.
+pub const SELECTION_CATEGORY: usize = usize::MAX;
+
 /// All rows, in page order.
 pub const ROWS: &[RowInfo] = &[
+    // Selection rows first: Tool property lists them before the shared ones (U-016).
+    r(
+        Row::SelectMode,
+        "select_mode",
+        "Selection mode",
+        SELECTION_CATEGORY,
+        0,
+        true,
+        "New selection, add to, subtract from, or keep the overlap with the current selection.",
+    ),
+    r(
+        Row::AspectType,
+        "aspect",
+        "Aspect type",
+        SELECTION_CATEGORY,
+        0,
+        false,
+        "Fix the shape's aspect ratio.",
+    ),
+    r(
+        Row::AdjustAngle,
+        "adjust_angle",
+        "Adjust angle after fixed",
+        SELECTION_CATEGORY,
+        0,
+        false,
+        "Rotate the shape after drawing it.",
+    ),
     r(
         Row::BrushSize,
         "size",
@@ -733,6 +768,28 @@ fn draw_control(ui: &mut Ui, c: &Colors, i: &RowInfo, p: &mut BrushPreset, out: 
             widgets::prop_check(ui, c, i.label, false, false, &mut true);
         }
         Row::PostCorrection | Row::Taper | Row::VectorMagnet => {
+            widgets::prop_check(ui, c, i.label, false, false, &mut false);
+        }
+        Row::SelectMode => {
+            widgets::prop_row(ui, c, i.label, en, |ui| {
+                use brushye_command::core::selection::SelectMode;
+                let cells = [
+                    (icons::SQUARE, "New selection"),
+                    (icons::PLUS_SQUARE, "Add selection"),
+                    (icons::MINUS_SQUARE, "Subtract selection"),
+                    (icons::INTERSECT_SQUARE, "Select overlapping area"),
+                ];
+                let cur = SelectMode::ALL
+                    .iter()
+                    .position(|&m| m == p.mode.unwrap_or_default())
+                    .unwrap_or(0);
+                if let Some(k) = widgets::segmented(ui, c, &cells, cur) {
+                    p.mode = Some(SelectMode::ALL[k]);
+                    out.changed = true;
+                }
+            });
+        }
+        Row::AspectType | Row::AdjustAngle => {
             widgets::prop_check(ui, c, i.label, false, false, &mut false);
         }
         Row::AdjustBySpeed => {

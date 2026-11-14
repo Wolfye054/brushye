@@ -326,6 +326,7 @@ Change a sub tool's name or settings.
 | `opacity_curve` | curve points [x,y;…] | optional `key=` | Opacity pressure curve points [x,y;…] |
 | `density_pressure` | u8 | optional `key=` | Pen pressure controls density; minimum in percent |
 | `density_curve` | curve points [x,y;…] | optional `key=` | Density pressure curve points [x,y;…] |
+| `mode` | selection mode (new\|add\|subtract\|intersect) | optional `key=` | Selection mode (selection sub tools) |
 | `clear` | string | optional `key=` | Comma-separated settings to turn off (not size) |
 
 ### `subtool.add` (v1, tool)

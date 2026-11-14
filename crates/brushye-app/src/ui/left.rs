@@ -12,7 +12,7 @@ use super::tools::{self, SubTool, TOOLS, ToolId};
 use super::widgets;
 use super::{UiState, rows, tool_cmds};
 use crate::icons;
-use brushye_command::tools::Target;
+use brushye_command::tools::{SubKind, Target};
 
 // ---------------------------------------------------------------- tool column
 
@@ -312,6 +312,20 @@ fn sub_tool_menu(ui: &mut Ui, st: &mut UiState, palette: bool) {
     }
 }
 
+/// The palette icon of a selection sub tool.
+fn kind_icon(k: SubKind) -> Option<&'static str> {
+    Some(match k {
+        SubKind::Brush => return None,
+        SubKind::Rectangle => icons::SELECTION,
+        SubKind::Ellipse => icons::CIRCLE_DASHED,
+        SubKind::Lasso => icons::LASSO,
+        SubKind::Polyline => icons::POLYGON,
+        SubKind::SelectionPen => icons::PEN,
+        SubKind::EraseSelection => icons::ERASER,
+        SubKind::ShrinkSelection => icons::LASSO,
+    })
+}
+
 pub fn sub_tool(ui: &mut Ui, c: &Colors, st: &mut UiState, r: Rect) {
     let tool = st.tools.tool;
     let title_r = Rect::from_min_size(r.min, vec2(r.width(), m::TITLE_BAR));
@@ -426,13 +440,26 @@ pub fn sub_tool(ui: &mut Ui, c: &Colors, st: &mut UiState, r: Rect) {
                             c.text,
                         );
                     } else {
-                        let tex = preview_texture(ui, st, &item.preset, (w as u32).max(40), 30);
-                        ui.painter().image(
-                            tex.id(),
-                            Rect::from_min_size(rr.min, vec2(w, 30.0)),
-                            Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)),
-                            Color32::WHITE,
-                        );
+                        // Selection shapes show an icon; the selection brushes an icon and their
+                        // stroke (U-016).
+                        if item.kind == SubKind::Brush || item.kind.is_selection_brush() {
+                            let tex = preview_texture(ui, st, &item.preset, (w as u32).max(40), 30);
+                            ui.painter().image(
+                                tex.id(),
+                                Rect::from_min_size(rr.min, vec2(w, 30.0)),
+                                Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)),
+                                Color32::WHITE,
+                            );
+                        }
+                        if let Some(icon) = kind_icon(item.kind) {
+                            widgets::draw_icon(
+                                ui,
+                                pos2(rr.left() + 12.0, rr.center().y - 2.0),
+                                icon,
+                                15.0,
+                                c.icon,
+                            );
+                        }
                         let text_pos = pos2(rr.right() - 6.0, rr.bottom() - 9.0);
                         if i == selected {
                             let tw = ui.fonts_mut(|f| {
@@ -808,7 +835,20 @@ pub fn tool_property(ui: &mut Ui, c: &Colors, st: &mut UiState, r: Rect) {
         return;
     };
     let mut top = body.top();
-    if st.prefs.show_preview {
+    // Selection shapes have no stroke to preview (U-016: their strip shows only the name).
+    let strokes = sub.kind == SubKind::Brush || sub.kind.is_selection_brush();
+    if st.prefs.show_preview && !strokes {
+        let strip = Rect::from_min_size(body.min, vec2(body.width(), 22.0));
+        widgets::fill(ui, strip, c.bar);
+        ui.painter().text(
+            strip.min + vec2(3.0, 11.0),
+            egui::Align2::LEFT_CENTER,
+            &sub.name,
+            egui::FontId::proportional(11.0),
+            c.text,
+        );
+        top = strip.bottom() + 2.0;
+    } else if st.prefs.show_preview {
         // Preview strip (44 px): name label, the brush's stroke, lock toggle (U-004).
         let strip = Rect::from_min_size(body.min, vec2(body.width(), 44.0));
         widgets::fill(ui, strip, c.bar);
@@ -869,11 +909,10 @@ pub fn tool_property(ui: &mut Ui, c: &Colors, st: &mut UiState, r: Rect) {
                     let info = rows::info(row);
                     if st.prefs.show_category && info.category != last_cat {
                         last_cat = info.category;
-                        ui.label(
-                            egui::RichText::new(rows::CATEGORIES[info.category].0.trim())
-                                .size(10.0)
-                                .color(c.text_dim),
-                        );
+                        let cat = rows::CATEGORIES
+                            .get(info.category)
+                            .map_or("Selection", |c| c.0);
+                        ui.label(egui::RichText::new(cat.trim()).size(10.0).color(c.text_dim));
                     }
                     let out = rows::draw(ui, c, row, &mut sub.preset);
                     if out.dynamics.is_some() {

@@ -67,7 +67,7 @@ pub const TOOLS: &[ToolInfo] = &[
         "Selection area",
         icons::SELECTION,
         "M",
-        false,
+        true,
         false,
     ),
     t(

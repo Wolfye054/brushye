@@ -6,6 +6,8 @@ use brushye_core::brush::{
 };
 use serde_json::{Map, Value as Json};
 
+use brushye_core::selection::SelectMode;
+
 use crate::commands::BrushStroke;
 use crate::params;
 use crate::params::{JsonReader, Reader};
@@ -33,6 +35,7 @@ params! {
         opacity_curve: Option<Curve> = opt "Opacity pressure curve points [x,y;…]",
         density_pressure: Option<u8> = opt "Pen pressure controls density; minimum in percent",
         density_curve: Option<Curve> = opt "Density pressure curve points [x,y;…]",
+        mode: Option<SelectMode> = opt "Selection mode (selection sub tools only)",
     }
 }
 
@@ -59,6 +62,7 @@ impl BrushPreset {
             opacity_curve: p.opacity_curve.clone(),
             density_pressure: p.density_pressure,
             density_curve: p.density_curve.clone(),
+            mode: p.mode,
         }
     }
 
@@ -93,6 +97,7 @@ impl BrushPreset {
             density_curve: self.density_curve.clone(),
             samples,
             target: None,
+            // The selection mode only applies with target=selection (set by the caller).
             mode: None,
         }
     }

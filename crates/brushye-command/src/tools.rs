@@ -136,10 +136,58 @@ macro_rules! word_arg {
 word_arg!(Tool, "tool");
 word_arg!(Chip, "colour chip (main|sub|transparent)");
 
+/// What a sub tool does: paint with its preset, or one of the Selection area sub tools
+/// (U-016), in CSP's order.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum SubKind {
+    #[default]
+    Brush,
+    Rectangle,
+    Ellipse,
+    Lasso,
+    Polyline,
+    SelectionPen,
+    EraseSelection,
+    ShrinkSelection,
+}
+
+impl SubKind {
+    pub const ALL: [SubKind; 8] = [
+        Self::Brush,
+        Self::Rectangle,
+        Self::Ellipse,
+        Self::Lasso,
+        Self::Polyline,
+        Self::SelectionPen,
+        Self::EraseSelection,
+        Self::ShrinkSelection,
+    ];
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Brush => "brush",
+            Self::Rectangle => "rectangle",
+            Self::Ellipse => "ellipse",
+            Self::Lasso => "lasso",
+            Self::Polyline => "polyline",
+            Self::SelectionPen => "selection_pen",
+            Self::EraseSelection => "erase_selection",
+            Self::ShrinkSelection => "shrink_selection",
+        }
+    }
+    pub fn from_name(s: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|k| k.name() == s)
+    }
+    /// Draws the selection with a brush stroke (`brush.stroke … target=selection`).
+    pub fn is_selection_brush(self) -> bool {
+        matches!(self, Self::SelectionPen | Self::EraseSelection)
+    }
+}
+
 /// One sub tool: a named brush preset, plus how it shows in the palettes (U-010, U-011).
 #[derive(Clone, Debug, PartialEq)]
 pub struct SubTool {
     pub name: String,
+    pub kind: SubKind,
     pub preset: BrushPreset,
     /// Row keys shown in Tool property (the Sub Tool Detail eye buttons).
     pub shown: Vec<String>,
@@ -151,10 +199,20 @@ pub struct SubTool {
 
 impl SubTool {
     pub fn new(tool: Tool, name: &str, preset: BrushPreset) -> Self {
+        let kind = if tool == Tool::Selection {
+            SubKind::Rectangle
+        } else {
+            SubKind::Brush
+        };
+        Self::with_kind(tool, kind, name, preset)
+    }
+
+    pub fn with_kind(tool: Tool, kind: SubKind, name: &str, preset: BrushPreset) -> Self {
         Self {
             name: name.into(),
+            kind,
             preset,
-            shown: default_shown(tool),
+            shown: default_shown_kind(tool, kind),
             base: None,
             user_default: None,
         }
@@ -193,11 +251,29 @@ impl ToolSet {
 
 /// Tool property rows shown by default (keys of the Sub Tool Detail rows).
 pub fn default_shown(tool: Tool) -> Vec<String> {
-    let keys: &[&str] = match tool {
-        Tool::Brush | Tool::Airbrush => {
+    default_shown_kind(tool, SubKind::Brush)
+}
+
+/// Tool property rows of a sub tool kind; the selection ones as observed (U-016).
+pub fn default_shown_kind(tool: Tool, kind: SubKind) -> Vec<String> {
+    let keys: &[&str] = match (tool, kind) {
+        (_, SubKind::Rectangle | SubKind::Ellipse) => {
+            &["select_mode", "aspect", "adjust_angle", "aa"]
+        }
+        (_, SubKind::Lasso | SubKind::Polyline) => &["select_mode", "aa"],
+        (_, SubKind::SelectionPen | SubKind::EraseSelection) => &[
+            "select_mode",
+            "size",
+            "aa",
+            "hardness",
+            "density",
+            "stabilization",
+        ],
+        (_, SubKind::ShrinkSelection) => &[],
+        (Tool::Brush | Tool::Airbrush, _) => {
             &["size", "opacity", "hardness", "density", "stabilization"]
         }
-        Tool::Eraser => &["size", "aa", "hardness"],
+        (Tool::Eraser, _) => &["size", "aa", "hardness"],
         _ => &[
             "size",
             "opacity",
@@ -307,6 +383,39 @@ pub fn default_set(tool: Tool) -> Option<ToolSet> {
                 ),
             ],
         )],
+        Tool::Selection => {
+            // U-016: the Selection area sub tools in CSP's order. Selection pen and Erase
+            // selection: size 30, AA none, stabilization 2, Add / Subtract (S-001 run 2).
+            let items = [
+                ("Rectangle", SubKind::Rectangle, "size=10.0 mode=new"),
+                ("Ellipse", SubKind::Ellipse, "size=10.0 mode=new"),
+                ("Lasso", SubKind::Lasso, "size=10.0 mode=new"),
+                ("Polyline", SubKind::Polyline, "size=10.0 mode=new"),
+                (
+                    "Selection pen",
+                    SubKind::SelectionPen,
+                    "size=30.0 aa=none stabilization=2 mode=add",
+                ),
+                (
+                    "Erase selection",
+                    SubKind::EraseSelection,
+                    "size=30.0 aa=none stabilization=2 mode=subtract",
+                ),
+                (
+                    "Shrink selection",
+                    SubKind::ShrinkSelection,
+                    "size=10.0 mode=new",
+                ),
+            ];
+            vec![SubToolGroup {
+                name: "Selection area".into(),
+                items: items
+                    .iter()
+                    .map(|(n, k, p)| SubTool::with_kind(tool, *k, n, preset(p)))
+                    .collect(),
+                selected: 0,
+            }]
+        }
         Tool::Eraser => vec![group(
             tool,
             "Eraser",
@@ -331,6 +440,16 @@ pub fn builtin_default(tool: Tool, name: &str) -> Option<BrushPreset> {
         .map(|s| s.preset)
 }
 
+/// The kind of the built-in sub tool with this name.
+fn builtin_kind(tool: Tool, name: &str) -> Option<SubKind> {
+    default_set(tool)?
+        .groups
+        .into_iter()
+        .flat_map(|g| g.items)
+        .find(|s| s.name == name)
+        .map(|s| s.kind)
+}
+
 // ---------------------------------------------------------------- persistence
 
 /// JSON form of one tool's sub tools (the user settings file).
@@ -342,6 +461,7 @@ pub fn set_to_json(set: &ToolSet) -> Json {
             "selected": g.selected,
             "items": g.items.iter().map(|s| json!({
                 "name": s.name,
+                "kind": s.kind.name(),
                 // A locked sub tool saves its locked settings, not the edits (U-010).
                 "settings": s.base.as_ref().unwrap_or(&s.preset).to_json(),
                 "shown": s.shown,
@@ -362,7 +482,15 @@ pub fn set_from_json(tool: Tool, j: &Json) -> Option<ToolSet> {
             .iter()
             .filter_map(|s| {
                 let preset = BrushPreset::from_json(s["settings"].as_object()?).ok()?;
-                let mut st = SubTool::new(tool, s["name"].as_str()?, preset);
+                let name = s["name"].as_str()?;
+                // The kind is saved; older settings files take it from the built-in sub tool
+                // of that name.
+                let kind = s["kind"]
+                    .as_str()
+                    .and_then(SubKind::from_name)
+                    .or_else(|| builtin_kind(tool, name))
+                    .unwrap_or(SubTool::new(tool, name, preset.clone()).kind);
+                let mut st = SubTool::with_kind(tool, kind, name, preset);
                 if let Some(a) = s["shown"].as_array() {
                     st.shown = a
                         .iter()
@@ -604,7 +732,7 @@ impl ToolState {
                 };
                 self.group_mut(t)
                     .items
-                    .push(SubTool::new(tool, name, preset));
+                    .push(SubTool::with_kind(tool, first.kind, name, preset));
                 self.tool = tool;
                 self.select(t);
             }
@@ -788,6 +916,7 @@ impl ToolState {
             "group": t.group,
             "item": t.item,
             "name": s.name,
+            "kind": s.kind.name(),
             "settings": s.preset.to_text(),
             "shown": s.shown,
             "locked": s.locked(),
@@ -838,6 +967,26 @@ mod tests {
             Ok(Some(j)) => j,
             other => unreachable!("{other:?}"),
         }
+    }
+
+    /// The Selection area sub tools (U-016): kinds, default modes, and the mode as a setting.
+    #[test]
+    fn selection_sub_tools() {
+        let mut s = Session::new();
+        run(&mut s, "subtool.select tool=selection item=5");
+        let j = q(&mut s, "?subtool");
+        assert_eq!(
+            (j["name"].as_str(), j["kind"].as_str()),
+            (Some("Erase selection"), Some("erase_selection"))
+        );
+        assert!(j["settings"].as_str().is_some_and(|t| t.contains("mode=subtract")));
+        run(&mut s, "subtool.set item=1 mode=intersect");
+        let j = q(&mut s, "?subtool tool=selection item=1");
+        assert_eq!(j["kind"], "ellipse");
+        assert!(j["settings"].as_str().is_some_and(|t| t.contains("mode=intersect")));
+        // A copy keeps its kind.
+        run(&mut s, "subtool.copy tool=selection item=2");
+        assert_eq!(q(&mut s, "?subtool tool=selection item=3")["kind"], "lasso");
     }
 
     #[test]

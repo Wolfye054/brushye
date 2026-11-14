@@ -4,6 +4,7 @@
 use crate::blend::BlendMode;
 use crate::blend::math::{a15, composite, effective_alpha};
 use crate::document::{Document, Layer};
+use crate::mask::Mask;
 use crate::tile::TILE_SIZE;
 
 /// A flattened image: straight (non-premultiplied) RGBA8, row-major.
@@ -87,9 +88,16 @@ impl Rect {
     }
 }
 
-/// Visit a raster layer's stored pixels inside the rectangle: `f(buffer index, rgba)`.
-/// Pixels without a stored tile are transparent and skipped.
-fn each_pixel(layer: &Layer, r: &Rect, mut f: impl FnMut(usize, [u8; 4])) {
+/// The mask that applies when rendering a layer: present and enabled (L-008).
+fn active_mask(layer: &Layer) -> Option<&Mask> {
+    layer.mask.as_ref().filter(|m| m.enabled)
+}
+
+/// Visit a raster layer's stored pixels inside the rectangle: `f(buffer index, rgba, mask)`,
+/// where `mask` is the layer's mask value there (255 without a mask). Pixels without a stored
+/// tile are transparent and skipped.
+fn each_pixel(layer: &Layer, r: &Rect, mut f: impl FnMut(usize, [u8; 4], u8)) {
+    let mask = active_mask(layer);
     let ts = TILE_SIZE as i64;
     for (&(tx, ty), tile) in layer.tiles.iter() {
         let (tx0, ty0) = (i64::from(tx) * ts, i64::from(ty) * ts);
@@ -98,13 +106,19 @@ fn each_pixel(layer: &Layer, r: &Rect, mut f: impl FnMut(usize, [u8; 4])) {
         if xa >= xb || ya >= yb {
             continue;
         }
+        let mtile = mask.map(|m| (m.tile((tx, ty)), m.background));
         for y in ya..yb {
             let iy = (y - ty0) as usize;
             for x in xa..xb {
                 let ix = (x - tx0) as usize;
                 let s = &tile.px[(iy * TILE_SIZE + ix) * 4..][..4];
                 if s[3] != 0 {
-                    f(r.at(x, y), [s[0], s[1], s[2], s[3]]);
+                    let m = match mtile {
+                        None => 255,
+                        Some((Some(t), _)) => t.v[iy * TILE_SIZE + ix],
+                        Some((None, bg)) => bg,
+                    };
+                    f(r.at(x, y), [s[0], s[1], s[2], s[3]], m);
                 }
             }
         }
@@ -134,7 +148,7 @@ fn content(doc: &Document, layer: &Layer, r: &Rect) -> Vec<u8> {
         let kids = children(doc, layer);
         render_list(doc, &kids, r, &mut buf, true);
     } else {
-        each_pixel(layer, r, |d, s| buf[d..d + 4].copy_from_slice(&s));
+        each_pixel(layer, r, |d, s, _| buf[d..d + 4].copy_from_slice(&s));
     }
     buf
 }
@@ -168,11 +182,20 @@ fn draw(doc: &Document, layer: &Layer, r: &Rect, px: &mut [u8], first: bool) -> 
     }
     if layer.is_folder() && layer.blend == BlendMode::Through {
         // Through: the children blend straight into the backdrop (L-004).
-        let before = (layer.opacity < 100).then(|| px.to_vec());
+        let mask = active_mask(layer);
+        let before = (layer.opacity < 100 || mask.is_some()).then(|| px.to_vec());
         let kids = children(doc, layer);
         let still_first = render_list(doc, &kids, r, px, first);
-        if let Some(b) = before {
-            opacity_lerp(&b, px, r, layer.opacity);
+        if let Some(b) = &before {
+            if layer.opacity < 100 {
+                opacity_lerp(b, px, r, layer.opacity);
+            }
+            // A Through folder's mask lerps the backdrop toward the result with
+            // floor(M·32768/255) (L-004 run 2). With opacity below 100 % as well, the order
+            // of the two is not observed yet (open).
+            if let Some(m) = mask {
+                mask_lerp(b, px, r, m);
+            }
         }
         return !still_first;
     }
@@ -181,22 +204,57 @@ fn draw(doc: &Document, layer: &Layer, r: &Rect, px: &mut [u8], first: bool) -> 
         // result's alpha exactly as layer opacity does (L-004 run 3, partly transparent
         // result; only Through folders lerp).
         let src = content(doc, layer, r);
-        composite_buffer(&src, r, px, layer.blend, layer.opacity, first);
+        composite_buffer(
+            &src,
+            r,
+            px,
+            layer.blend,
+            layer.opacity,
+            active_mask(layer),
+            first,
+        );
         return true;
     }
-    each_pixel(layer, r, |d, s| {
-        let at = effective_alpha(s[3], layer.opacity);
+    each_pixel(layer, r, |d, s, m| {
+        // Opacity acts on the pixel alpha first, then the mask, with a floor (L-008).
+        let at = Mask::apply(effective_alpha(s[3], layer.opacity), m);
         put(px, d, layer.blend, [s[0], s[1], s[2]], at, first);
     });
     true
 }
 
-/// Composite a whole source buffer onto `px` with a blend mode and layer opacity (L-003).
-fn composite_buffer(src: &[u8], r: &Rect, px: &mut [u8], mode: BlendMode, opacity: u8, copy: bool) {
+/// `px = lerp15(before, px, floor(M·32768/255))`: a Through folder's mask (L-004 run 2).
+fn mask_lerp(before: &[u8], px: &mut [u8], r: &Rect, m: &Mask) {
+    for y in r.y0..r.y1 {
+        for x in r.x0..r.x1 {
+            let w = u32::from(m.value(x as u32, y as u32)) * 32768 / 255;
+            let d = r.at(x, y);
+            for i in d..d + 4 {
+                px[i] = ((u32::from(before[i]) * (32768 - w) + u32::from(px[i]) * w + 16384) >> 15)
+                    as u8;
+            }
+        }
+    }
+}
+
+/// Composite a whole source buffer onto `px` with a blend mode, layer opacity (L-003) and an
+/// optional mask (L-008: after opacity, with a floor).
+fn composite_buffer(
+    src: &[u8],
+    r: &Rect,
+    px: &mut [u8],
+    mode: BlendMode,
+    opacity: u8,
+    mask: Option<&Mask>,
+    copy: bool,
+) {
     for y in r.y0..r.y1 {
         for x in r.x0..r.x1 {
             let d = r.at(x, y);
-            let at = effective_alpha(src[d + 3], opacity);
+            let mut at = effective_alpha(src[d + 3], opacity);
+            if let Some(m) = mask {
+                at = Mask::apply(at, m.value(x as u32, y as u32));
+            }
             put(px, d, mode, [src[d], src[d + 1], src[d + 2]], at, copy);
         }
     }
@@ -233,13 +291,31 @@ fn render_list(doc: &Document, list: &[&Layer], r: &Rect, px: &mut [u8], mut fir
             }
             for c in clipped.iter().filter(|c| c.visible) {
                 let src = content(doc, c, r);
-                composite_buffer(&src, r, &mut group, c.blend, c.opacity, false);
+                composite_buffer(
+                    &src,
+                    r,
+                    &mut group,
+                    c.blend,
+                    c.opacity,
+                    active_mask(c),
+                    false,
+                );
             }
             for (k, a) in alpha.into_iter().enumerate() {
                 group[k * 4 + 3] = a;
             }
             // The group blends like its base, including a folder base's opacity (L-004 run 3).
-            composite_buffer(&group, r, px, base.blend, base.opacity, first);
+            // Masks on the base or the clipped layers follow the layer rule (not observed in a
+            // clipping group yet: open).
+            composite_buffer(
+                &group,
+                r,
+                px,
+                base.blend,
+                base.opacity,
+                active_mask(base),
+                first,
+            );
             first = false;
         }
         i = j;

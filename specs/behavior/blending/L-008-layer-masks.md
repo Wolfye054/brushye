@@ -57,6 +57,10 @@
   - Checked on the opaque layer (a = 255) and on top_alpha (all a).
 - **Enable Mask off:** the layer renders as if it had no mask (bit-exact).
 
+- **Export detail:** fully transparent pixels in CSP's exported PNGs carry colour bytes
+  (255,255,255) (e.g. `mask1_top_alone`, 11 595 px). It is invisible, and comparisons treat
+  alpha-0 pixels as equal. Brushye's PNG export writes (0,0,0,0) there.
+
 ## Models tried (for the record)
 - f: `round(a·M/255)` (22 273 off), `(a·(M+1))>>8` (10 728), a 15-bit product (36 861).
   Only `floor(a·M/255)` is exact.

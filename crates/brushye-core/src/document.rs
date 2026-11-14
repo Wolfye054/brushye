@@ -68,6 +68,8 @@ pub struct Layer {
     pub clip: bool,
     /// Folders: open in the Layer palette (not a History step, H-002).
     pub expanded: bool,
+    /// Layer mask (L-008), on raster layers and folders.
+    pub mask: Option<crate::mask::Mask>,
     pub tiles: TileGrid,
 }
 
@@ -146,6 +148,7 @@ impl Layer {
             parent: None,
             clip: false,
             expanded: true,
+            mask: None,
             tiles: TileGrid::default(),
         }
     }
@@ -496,6 +499,19 @@ impl Document {
                 h.bytes(b"struct");
                 h.u32(l.parent.map_or(0, |p| p.0 + 1));
                 h.bytes(&[u8::from(l.clip), u8::from(l.expanded)]);
+            }
+            if let Some(m) = &l.mask {
+                h.bytes(b"mask");
+                h.bytes(&[
+                    m.background,
+                    u8::from(m.enabled),
+                    u8::from(m.linked),
+                    u8::from(m.show_area),
+                ]);
+                h.u32(u32::try_from(m.tile_count()).unwrap_or(u32::MAX));
+                for ((tx, ty), t) in m.tiles() {
+                    h.i32(*tx).i32(*ty).bytes(&t.v);
+                }
             }
             h.u32(u32::try_from(l.tiles.len()).unwrap_or(u32::MAX));
             for ((tx, ty), t) in l.tiles.iter() {

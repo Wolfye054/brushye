@@ -1,10 +1,11 @@
 # S-001 Selections: shapes, edit operations, use by Fill / Delete / masks, History
 - Status: **observed** (shapes, Invert, Expand/Shrink, Fill, Delete, mask from selection: exact;
-  ellipse/lasso edge rasterization: data recorded, model open; painting inside a selection:
-  open)
+  selection modes, painting inside a selection, Selection pen / Erase selection: exact (run 2);
+  ellipse/lasso edge rasterization: data recorded, model open)
 - CSP version: 1.13.2 (PRO, 64-bit, build 202301210208)
 - Needs: automated-Wine OK (strokes inside a selection: virtual pen, see open questions)
-- Date / method / observer: 2026-11-14 / automated-Wine (Xvfb :77, XTEST) / Claude
+- Date / method / observer: 2026-11-14 / automated-Wine / Claude. Run 1: Xvfb :77, XTEST mouse.
+  Run 2: pen display Xorg :78 with the virtual pen (D-003) for strokes, XTEST for the rest.
 - Data: `data/*.png`, re-encoded without the iCCP chunk.
 
 ## Setup (exact)
@@ -58,9 +59,7 @@
 - **Layer > Layer Mask > Mask Outside Selection** with a selection makes a mask **M = S**
   exactly (`mask_outside_ellipse`): inside revealed, outside hidden.
 - **Painting with a selection:** a pen stroke is clipped to the selection.
-  - The exact rule couldn't be measured: two XTEST mouse strokes differed in their faint edge
-    rows (195, 204), so the masked and unmasked strokes aren't comparable. Open; needs the
-    virtual pen (D-003), which is bit-repeatable.
+  - Run 2 measured the rule (below, "Painting inside a selection").
 
 ### History (labels)
 | Action | History entry |
@@ -72,9 +71,69 @@
 
 Selections are History steps (H-001).
 
+## Run 2 (2026-11-14, pen display :78)
+Same canvas setup. Strokes use the virtual pen: a horizontal line at full pressure, a 3 px step
+every 8 ms (`tools/observe` vpen fifo; script `move`/`wait` lines as in `pen_grid.py`).
+
+### Painting inside a selection
+- **Repeatability:** the same virtual-pen stroke twice with Real G-Pen (size 10, stabilization 6,
+  Adjust by speed on) is *not* bit-identical (`stroke_nosel_1/2`): the edge rows shift by a
+  sub-pixel, but the core rows are 255 in both. So the rule is fitted where the unclipped
+  stroke alpha is known: in the stroke core.
+- **Opaque stroke** (opacity 100) across the AA ellipse [400,650)×[100,300)
+  (`stroke_in_ellipse`, selection = `ellipse_aa_middle`): wherever the core is 255, the
+  painted **alpha = S** exactly; nothing is painted where S = 0.
+- **Stroke at opacity 93** (core alpha 238 without a selection): on all 19 partial edge pixels
+  in the core rows, **alpha = floor(238 · S / 255)** (`stroke93_in_ellipse`). Rounding,
+  ceiling and `·/256` each miss several.
+- **The same stroke over an opaque white fill** (`stroke93_over_white`): edge colours equal the
+  brush engine's normal stroke merge with stroke alpha floor(238 · S / 255) (12 of 14 checked
+  values reproduce Brushye's current Normal composite). The two alpha 237/238 values are 19/18
+  where L-003's layer composite gives 18/17; Brushye's brush engine already gives 18 for the
+  unselected stroke, so the selection only scales the stroke alpha.
+- Rule: **the stroke's alpha at a pixel is multiplied by S with a floor, then the stroke merges
+  into the layer as usual**, the same rule as layer masks (L-008).
+
+### Selection modes (Selection area tool, Tool property "Selection mode")
+The four buttons are New, Add, Subtract and Intersect. In Add/Subtract/Intersect, dragging
+inside the current selection makes a new shape; it doesn't move the selection.
+- Hard rectangle A, then AA ellipse B (drag (200,180)→(400,350)) (`mode_add/sub/int`): Add is
+  255 inside A, Intersect is B inside A, and Subtract + Intersect = 255 inside A. Reversed order
+  (ellipse first, then add the rectangle, `mode_add_rev`) gives the same result as `mode_add`.
+- To separate max/min from sum/product, **A = Layer > Selection from Layer > Create Selection**
+  of a layer whose alpha is a 93 % Real G-Pen stroke (alpha 238 in the core, partial values at
+  its edge; the selection equals the layer alpha exactly, `layer_sel_A`), combined with the AA
+  ellipse B (`ellipse_B`, 605 partial pixels), `Ae_add/sub/int`:
+
+| Mode | Rule | Mismatches |
+|---|---|---|
+| Add | **min(A + B, 255)** | 0 (max: 428, screen: 393) |
+| Subtract | **max(A − B, 0)** | 0 (min(A, 255−B): 428, A·(255−B)/255: 387) |
+| Intersect | **floor(A · B / 255)** | 0 (min: 428, rounded product: 195) |
+
+  Two AA ellipses (`ellipse_e1`, `ee_*`) agree but separate the rules on one pixel only.
+
+### Selection pen / Erase selection
+- Sub tools of Selection area. Defaults: Selection pen = mode **Add**, Erase selection = mode
+  **Subtract**; both Brush Size 30, Anti-aliasing **none**, Hardness, Brush density 100,
+  Stabilization 2.
+- The same virtual-pen line (canvas (200,300)→(599,300)): Selection pen on no selection gives
+  a binary stroke shape (`selection_pen`, 12 664 px, y 285–314, x 185–613). Erase selection
+  after Select All removes exactly the same pixels (`erase_selection` = 255 − `selection_pen`).
+  With AA none, the two strokes came out identical.
+- Brushye's brush engine (`brush.stroke size=30 aa=none`, samples at the canvas positions)
+  draws the same shape except 16 px at the stroke ends (stabilizer and timing). So the
+  selection pen is a brush stroke written into the selection, combined by the tool's mode.
+
+### Harness notes
+- Ctrl+A in a Tool property number field does Select All on the canvas; the field doesn't
+  take it.
+- Menu items in a submenu need a hover pause before the click.
+
 ## Open questions
 - Ellipse and lasso edge rasterization (binary and AA). The data is in `data/`; analysis only.
-- Painting inside a selection (brush alpha × S rule), with the virtual pen.
 - Rounded Expand/Shrink at other widths; Expand/Shrink of AA edges; Blur border.
-- Selection modes (add, subtract, intersect), Polyline, Selection pen / Erase selection,
-  Shrink selection sub tool, Auto select, Select Color Gamut, Quick mask, selection layers.
+- Polyline, Shrink selection sub tool, Auto select, Select Color Gamut, Quick mask, selection
+  layers; Selection pen with anti-aliasing on (soft values under Add).
+- Layer > Selection from Layer > Add / Delete / Select Overlapping Area (whether they use the
+  same arithmetic as the tool modes).

@@ -708,3 +708,48 @@ crates/
     unlike CSP's model.
   - New command versions for each extension: unnecessary while old meanings are unchanged.
 - **No new dependencies.**
+
+## D-024 Selections: storage, commands, file format — PROPOSAL
+- **Date:** proposed 2026-11-14 (M10, after S-001/U-016).
+- **Scope:** behaviour follows CSP 1.13.2 from observation: S-001 and U-016 so far, more runs
+  for the open items. This entry covers only how Brushye stores and addresses a selection.
+- **Proposal:**
+  1. **The selection is document state.** `Document` gains `selection: Option<Selection>`,
+     where `Selection` is an 8-bit value grid (0 = unselected, 255 = selected).
+     - It reuses the sparse tile storage of `Mask` (D-023): a background value plus
+       copy-on-write tiles. A Select All or an inverted rectangle stores almost nothing.
+     - It lives in the document version, so selection changes are ordinary undo steps, as CSP
+       records them (S-001, H-001).
+     - Reselect needs the last selection, so `Document` also keeps `last_selection`.
+     - Both join `content_hash` only when present, so documents without a selection keep their
+       hashes.
+  2. **Commands carry shapes, not pixels.** They are short and readable in journals:
+     - `select.rect x= y= w= h=`, `select.ellipse x= y= w= h= aa=`,
+       `select.polygon points=[x,y;…] aa=`, each with an optional `mode=new|add|subtract|
+       intersect`
+     - `select.all`, `select.none` (Deselect), `select.reselect`, `select.invert`
+     - `select.expand w= shape=square|round`,
+       `select.shrink w= shape= canvas_edge=`
+     - `select.move dx= dy=` (dragging inside a selection, S-001)
+
+     The rasterization of each shape is defined by S-001. The ellipse and polygon edge rules
+     are still being fitted, so until 1.0 a fix to them may change what an old journal
+     selects, like D-021 for brushes. Saved documents keep their pixels either way.
+  3. **Operations that use the selection** read it from the document:
+     - `brush.stroke` is clipped by it (rule to be observed with the virtual pen)
+     - new `edit.fill L color=` and `edit.delete L` (Edit > Fill / Delete, S-001)
+     - `mask.new … fill=selection|outside` (Mask Selection / Mask Outside Selection with a
+       selection, S-001: M = S)
+     - Without a selection they act as now (whole layer).
+  4. **`.brsh` format v4:** `document.json` gains `selection` and `last_selection` (`null` or
+     `{background}`), with tiles under `selection/` and `last_selection/`. A v3→v4 migration
+     adds nulls. Keeping the selection in Brushye's own file is a choice for our format; how
+     CSP's .clip treats it is not observed.
+- **Alternatives:**
+  - The selection as session (app) state outside the document. It wouldn't be undoable the
+    way CSP's is, and the journal and undo would diverge.
+  - Commands carrying a pixel blob of the selection. That makes huge journal lines, nothing
+    you can edit by hand, and the CSP shape rules would never become part of the command.
+  - A separate selection type instead of reusing `Mask`'s storage. That is duplicate code for
+    the same 8-bit sparse grid.
+- **No new dependencies.**

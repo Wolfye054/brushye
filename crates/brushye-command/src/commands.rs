@@ -163,6 +163,7 @@ params! {
         name: Option<String> = opt "Name (default \"Layer <n>\")",
         above: Option<LayerId> = opt "Insert directly above this layer, in its folder (default: on top)",
         into: Option<LayerId> = opt "Insert at the top of this folder (instead of above=)",
+        clip: Option<bool> = opt "Clip to Layer Below (CSP clips a new layer inserted inside a clipping group)",
     }
 }
 params! {

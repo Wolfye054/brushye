@@ -28,6 +28,7 @@ New layer with a caller-chosen id.
 | `name` | string | optional `key=` | Name (default "Layer <n>") |
 | `above` | layer id | optional `key=` | Insert directly above this layer, in its folder (default: on top) |
 | `into` | layer id | optional `key=` | Insert at the top of this folder (instead of above=) |
+| `clip` | bool | optional `key=` | Clip to Layer Below (CSP clips a new layer inserted inside a clipping group) |
 
 ### `layer.delete` (v1, undoable)
 Delete a layer.

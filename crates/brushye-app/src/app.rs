@@ -523,12 +523,15 @@ impl App {
                 .and_then(|d| d.layer(*a).map(|l| l.is_folder() && l.expanded))
                 .unwrap_or(false)
         });
+        let above = if into_folder.is_some() { None } else { active };
+        let clip = self.inside_clip_group(above);
         self.exec(Command::LayerNew(commands::LayerNew {
             layer: LayerId(id),
             kind: None,
             name: Some(format!("Layer {id}")),
-            above: if into_folder.is_some() { None } else { active },
+            above,
             into: into_folder,
+            clip: clip.then_some(true),
         }));
     }
 
@@ -551,6 +554,20 @@ impl App {
         self.can_edit_layer() && d.subtree(id).is_ok_and(|r| r.len() < d.layers().len())
     }
 
+    /// A layer inserted directly above `above` lands inside a clipping group when the layer
+    /// that would then be above it is clipped; CSP clips it too (L-008 run 3).
+    fn inside_clip_group(&self, above: Option<LayerId>) -> bool {
+        let (Some(d), Some(a)) = (self.doc(), above) else {
+            return false;
+        };
+        let Some(l) = d.layer(a) else { return false };
+        let sibs = d.children(l.parent);
+        sibs.iter()
+            .position(|s| s.id == a)
+            .and_then(|i| sibs.get(i + 1))
+            .is_some_and(|s| s.clip)
+    }
+
     /// Layer > New Layer Folder: always directly above the selected layer, in its folder,
     /// even when the selection is an expanded folder (unlike New Raster Layer; U-014 run 2).
     pub(crate) fn new_folder(&mut self) {
@@ -561,6 +578,7 @@ impl App {
             name: Some(format!("Folder {}", id.0)),
             above: self.session.active_layer(),
             into: None,
+            clip: None,
         }));
     }
 

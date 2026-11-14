@@ -2,7 +2,7 @@
 //! image. This defines correct output; GPU display and export are tested against it.
 
 use crate::blend::BlendMode;
-use crate::blend::math::{a15, composite, effective_alpha};
+use crate::blend::math::{composite, effective_alpha};
 use crate::document::{Document, Layer};
 use crate::mask::Mask;
 use crate::tile::TILE_SIZE;
@@ -160,12 +160,18 @@ fn children<'a>(doc: &'a Document, folder: &Layer) -> Vec<&'a Layer> {
         .collect()
 }
 
-/// `px = lerp15(before, px, a15(o8))` on every canvas pixel of the rectangle: a Through
-/// folder's opacity (L-004).
-fn opacity_lerp(before: &[u8], px: &mut [u8], r: &Rect, opacity: u8) {
-    let w = a15(effective_alpha(255, opacity));
+/// A Through folder's opacity and mask: one lerp from the backdrop before the folder to the
+/// result, `w = (w_op · w_M) >> 15` with `w_op = op·32768/100` and `w_M = floor(M·32768/255)`
+/// (32768 without a mask). Observed exact at 50 % with and without a mask (L-004 runs 1–3,
+/// L-008 run 3); other opacities are open.
+fn through_lerp(before: &[u8], px: &mut [u8], r: &Rect, opacity: u8, mask: Option<&Mask>) {
+    let wo = u32::from(opacity.min(100)) * 32768 / 100;
     for y in r.y0..r.y1 {
         for x in r.x0..r.x1 {
+            let wm = mask.map_or(32768, |m| {
+                u32::from(m.value(x as u32, y as u32)) * 32768 / 255
+            });
+            let w = (wo * wm) >> 15;
             let d = r.at(x, y);
             for i in d..d + 4 {
                 px[i] = ((u32::from(before[i]) * (32768 - w) + u32::from(px[i]) * w + 16384) >> 15)
@@ -187,15 +193,7 @@ fn draw(doc: &Document, layer: &Layer, r: &Rect, px: &mut [u8], first: bool) -> 
         let kids = children(doc, layer);
         let still_first = render_list(doc, &kids, r, px, first);
         if let Some(b) = &before {
-            if layer.opacity < 100 {
-                opacity_lerp(b, px, r, layer.opacity);
-            }
-            // A Through folder's mask lerps the backdrop toward the result with
-            // floor(M·32768/255) (L-004 run 2). With opacity below 100 % as well, the order
-            // of the two is not observed yet (open).
-            if let Some(m) = mask {
-                mask_lerp(b, px, r, m);
-            }
+            through_lerp(b, px, r, layer.opacity, mask);
         }
         return !still_first;
     }
@@ -221,20 +219,6 @@ fn draw(doc: &Document, layer: &Layer, r: &Rect, px: &mut [u8], first: bool) -> 
         put(px, d, layer.blend, [s[0], s[1], s[2]], at, first);
     });
     true
-}
-
-/// `px = lerp15(before, px, floor(M·32768/255))`: a Through folder's mask (L-004 run 2).
-fn mask_lerp(before: &[u8], px: &mut [u8], r: &Rect, m: &Mask) {
-    for y in r.y0..r.y1 {
-        for x in r.x0..r.x1 {
-            let w = u32::from(m.value(x as u32, y as u32)) * 32768 / 255;
-            let d = r.at(x, y);
-            for i in d..d + 4 {
-                px[i] = ((u32::from(before[i]) * (32768 - w) + u32::from(px[i]) * w + 16384) >> 15)
-                    as u8;
-            }
-        }
-    }
 }
 
 /// Composite a whole source buffer onto `px` with a blend mode, layer opacity (L-003) and an

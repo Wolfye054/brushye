@@ -294,17 +294,15 @@ pub fn layer_context_items(app: &mut App, ui: &mut Ui) {
     ui.separator();
     let mask = app.active_mask();
     sub(ui, "Layer mask", has_layer, |ui| {
-        // No selections yet: Mask Outside Selection with no selection hides everything
-        // (U-014). Mask Selection without a selection is not observed yet.
-        if item(
-            ui,
-            "Mask outside selection",
-            "",
-            mask.is_none() && app.can_edit_layer(),
-        ) {
+        // No selections yet. With no selection, Mask Outside Selection hides everything and
+        // Mask Selection reveals everything (U-014, L-008 run 3).
+        let can = mask.is_none() && app.can_edit_layer();
+        if item(ui, "Mask outside selection", "", can) {
             app.create_mask(true);
         }
-        item(ui, "Mask selection", "", false);
+        if item(ui, "Mask selection", "", can) {
+            app.create_mask(false);
+        }
         ui.separator();
         if item(ui, "Delete mask", "", mask.is_some()) {
             app.delete_mask();

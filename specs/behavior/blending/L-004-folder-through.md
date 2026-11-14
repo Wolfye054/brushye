@@ -76,6 +76,12 @@ clip_folder_base_op50,clipped_folder_normal,clipped_folder_through}.png`. All bi
   - It renders exactly as the Normal case: a clipped folder can't pass through, and stays
     clipped.
 
+## Correction (2026-11-14, L-008 run 3)
+A Through folder's opacity weight is **op·32768/100** (16384 at 50 %), not a15(o8) = 16320.
+- Run 1's opaque data fits any weight from 16320 to 16384.
+- L-008 run 3, with a partly transparent child, fits only 16384.
+- With a mask, opacity and mask combine into one lerp weight, `(w_op · w_M) >> 15`.
+
 ## Open questions
 - Nested folders (rendering). The palette nests (U-014); compositing is expected to follow
   recursively. Not run.

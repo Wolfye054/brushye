@@ -61,6 +61,46 @@
   (255,255,255) (e.g. `mask1_top_alone`, 11 595 px). It is invisible, and comparisons treat
   alpha-0 pixels as equal. Brushye's PNG export writes (0,0,0,0) there.
 
+## Run 3 (2026-11-14): clipping, folders with opacity, Apply/Ungroup/Mask Selection
+Method: automated-Wine (Xvfb :77). Data: `data/observed3/mask3_*.png`.
+- **Setup:** base, `top_alpha Copy` (A), `top Copy` (T).
+- **Masks:** the standard eraser strokes (run 2). An opaque readout layer made in the same
+  session matched run 2's `mask2_readout_alone` exactly, so the strokes are deterministic.
+- **Tests:** `crates/brushye-core/tests/observed_masks.rs` (run3).
+
+All results are bit-exact unless noted:
+- `mask3_clip_masked_base`: a mask on the clip base (A, T clipped). The group's alpha is the
+  base's alpha through the layer rule (floor(a·M/255)).
+- `mask3_clip_masked_clipped_screen` / `mask3_clip_screen_mask_disabled`: a mask on the
+  clipped layer, which is in Screen, enabled and disabled. The clipped layer's alpha goes
+  through the mask before it composites onto the base colour. A disabled mask is ignored.
+  - With T in Normal the mask has no visible effect, because top and top_alpha have the same
+    colours. That is why Screen was used.
+- **Apply Mask with the mask disabled** is still available, and **applies the mask anyway**:
+  `mask3_apply_disabled_screen` equals the enabled-mask export.
+- **Apply Mask to Layer is greyed out for folders.**
+- `mask3_folder_mask_op50`: Normal Folder [A] at 50 % with a mask. The layer rule applies:
+  floor(((a·(o8+1))>>8)·M/255) on the folder result's alpha.
+- `mask3_through_mask_op50`: the same folder as **Through**. One lerp from the backdrop
+  before the folder to the Through result, **w = (w_op · w_M) >> 15**, where
+  **w_op = op·32768/100** (16384 at 50 %) and w_M = floor(M·32768/255).
+  - Two consecutive lerps, in either order, are wrong.
+  - So is a15(o8) = 16320 as the opacity weight. L-004 run 1's opaque data allows anything
+    from 16320 to 16384, and this run needs exactly 16384.
+- `mask3_ungroup_masked_folder`: Ungroup of a folder with a hiding mask (and opacity 50 %,
+  Through) **discards** the folder's mask, opacity and mode. The export equals base +
+  top_alpha.
+- **Mask Selection with no selection** creates a reveal-all (white) mask, the same as the
+  palette button.
+- **New layer inside a clipping group:** a raster layer created between a clip base and a
+  clipped layer above it is itself **clipped**. One created above the topmost clipped layer
+  is not.
+- **Show Mask Area (display, from screenshots):** hidden pixels show
+  `(C·(255−w) + (0,0,255)·w + 127) / 255`, with `w = round(75·(255−M)/255)` and C the
+  displayed pixel. That is 99.95 % exact on pixels whose M is constant over a 7×7
+  neighbourhood (77 312 px). Over an empty canvas C is white, giving the (180,180,255) seen in
+  U-014.
+
 ## Models tried (for the record)
 - f: `round(a·M/255)` (22 273 off), `(a·(M+1))>>8` (10 728), a 15-bit product (36 861).
   Only `floor(a·M/255)` is exact.
@@ -68,10 +108,10 @@
   orders. Only opacity-then-mask with a floor is exact.
 
 ## Open questions
-- Masks on folders: observed in L-004 run 2. A Normal folder follows this spec's alpha rule;
-  a Through folder lerps the backdrop with weight `floor(M·32768/255)`.
-- A masked layer as a clip base or as a clipped layer: expected to follow the alpha rule above
-  (not run).
+- Through-folder opacity at values other than 50 % (the weight `op·32768/100` is fitted at
+  50 % only).
+- Show Mask Area over partly transparent displayed pixels (fitted over opaque content and
+  over an empty canvas).
 - Mask expression > Show gradients other than Yes (threshold masks).
 - Painting a mask with partially transparent ink or lower brush opacity: expected to follow
   the brush's alpha output. Not run.

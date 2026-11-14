@@ -769,7 +769,8 @@ fn edit(d: &mut Document, cmd: &Command, pressure_curve: &Curve) -> Result<(), E
                 .name
                 .clone()
                 .unwrap_or_else(|| format!("Layer {}", p.layer.0));
-            let layer = Layer::new(p.layer, name, kind);
+            let mut layer = Layer::new(p.layer, name, kind);
+            layer.clip = p.clip.unwrap_or(false);
             match (p.above, p.into) {
                 (_, None) => d.add_layer(layer, p.above)?,
                 (None, Some(f)) => d.add_layer_into(layer, f)?,
@@ -808,9 +809,9 @@ fn edit(d: &mut Document, cmd: &Command, pressure_curve: &Curve) -> Result<(), E
         Command::MaskApply(p) => {
             let l = d.layer_mut(p.layer)?;
             if l.is_folder() {
-                // CSP's Apply Mask on a folder is not observed yet.
+                // CSP greys out Apply Mask to Layer for folders (L-008 run 3).
                 return Err(ExecError(format!(
-                    "{}: applying a folder's mask is not supported yet",
+                    "{}: a folder's mask can't be applied",
                     p.layer
                 )));
             }

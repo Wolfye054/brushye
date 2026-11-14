@@ -145,7 +145,8 @@ v0.1.0-alpha is tagged. M8 (.sut import, crate brushye-sut) is done; open engine
 thin tips (B-014). D-021: before 1.0, brush fidelity fixes may change journal replay. M9 (MCP server) is done
 (report `docs/reports/M9-mcp-server.md`): `brushye-mcp` (headless, and attach mode, D-022), script
 examples, journal viewer; the maintainer's native Windows/macOS check of attach mode is pending.
-Next (proposed): M10 part 1, layer structure (folders/Through, clipping, masks), proposal first. New architectural decisions still
+M10 part 1 (layer structure, D-023) is implemented: folders/Through, clipping, layer masks,
+.brsh format v3, all matching the observed CSP exports. New architectural decisions still
 need maintainer approval first (see Working agreement). Never copy code from the maintainer's
 other projects (photocraft, clipcraft); design ideas only.
 

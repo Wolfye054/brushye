@@ -103,7 +103,9 @@ attach mode. Report: `docs/reports/M9-mcp-server.md`.
 - Observed (2026-11-14): L-008 masks, U-014 palette, H-002 history, L-004/L-006 run 2.
 - Done: folders, Through, clipping in the core, renderer (every observed export bit-exact),
   commands, `.brsh` v2 and the Layer palette.
-- Next: layer masks (L-008 data in hand).
+- Done: layer masks (core, renderer bit-exact on every L-008 export, commands, `.brsh` v3,
+  palette, mask painting, Show Mask Area); observation passes L-004 run 3, L-006 run 3,
+  L-008 run 3, U-014 run 2, U-015.
 - Folders + Through mode, clipping, masks, locks, selections, fill, gradient, transform,
   colour mixing (Blend/Running/Smear), texture, spray, dual brush, starting/ending,
   watercolor edge, PSD import/export, workspace/shortcut customization.

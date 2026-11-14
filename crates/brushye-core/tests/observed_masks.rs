@@ -174,3 +174,74 @@ fn l004_folder_masks() {
         exact(&d, &format!("observed3/folder_{name}_mask.png"));
     }
 }
+
+/// L-008 run 3: masks in clipping groups, folder masks with opacity, ungroup of a masked
+/// folder. base, A = top_alpha, T = top; masks are the standard eraser bands (M2).
+mod run3 {
+    use super::*;
+
+    fn stack(f: impl FnOnce(&mut Document)) -> Document {
+        let mut d = ok(Document::new(256, 512, 72, None));
+        ok(d.add_layer(raster(1, &Img::load("inputs/base.png")), None));
+        ok(d.add_layer(raster(2, &Img::load("inputs/top_alpha.png")), None));
+        ok(d.add_layer(raster(3, &Img::load("inputs/top.png")), None));
+        f(&mut d);
+        d
+    }
+    fn mask(d: &mut Document, id: u32) {
+        ok(d.layer_mut(LayerId(id))).mask = Some(mask_from_alpha(&Img::load(M2)));
+    }
+
+    #[test]
+    fn masks_in_clipping_groups() {
+        exact(
+            &stack(|d| {
+                ok(d.layer_mut(LayerId(3))).clip = true;
+                mask(d, 2);
+            }),
+            "observed3/mask3_clip_masked_base.png",
+        );
+        for (enabled, want) in [
+            (true, "observed3/mask3_clip_masked_clipped_screen.png"),
+            (false, "observed3/mask3_clip_screen_mask_disabled.png"),
+        ] {
+            exact(
+                &stack(|d| {
+                    let t = ok(d.layer_mut(LayerId(3)));
+                    t.clip = true;
+                    t.blend = BlendMode::Screen;
+                    mask(d, 3);
+                    if let Some(m) = ok(d.layer_mut(LayerId(3))).mask.as_mut() {
+                        m.enabled = enabled;
+                    }
+                }),
+                want,
+            );
+        }
+    }
+
+    #[test]
+    fn folder_masks_with_opacity_and_ungroup() {
+        for (blend, want) in [
+            (BlendMode::Normal, "observed3/mask3_folder_mask_op50.png"),
+            (BlendMode::Through, "observed3/mask3_through_mask_op50.png"),
+        ] {
+            exact(
+                &stack(|d| {
+                    ok(d.layer_mut(LayerId(3))).visible = false;
+                    ok(d.group(Layer::new(LayerId(5), "F", LayerKind::Folder), LayerId(2)));
+                    let f = ok(d.layer_mut(LayerId(5)));
+                    f.blend = blend;
+                    f.opacity = 50;
+                    mask(d, 5);
+                }),
+                want,
+            );
+        }
+        // Ungroup discards the folder (its mask and opacity): base + top_alpha.
+        exact(
+            &stack(|d| ok(d.layer_mut(LayerId(3))).visible = false),
+            "observed3/mask3_ungroup_masked_folder.png",
+        );
+    }
+}

@@ -25,7 +25,7 @@ struct LayerSig {
     parent: Option<LayerId>,
     clip: bool,
     /// Mask settings that affect rendering, and the mask's tile here (L-008).
-    mask: Option<(bool, u8, Option<Arc<MaskTile>>)>,
+    mask: Option<(bool, bool, u8, Option<Arc<MaskTile>>)>,
     tile: Option<Arc<Tile>>,
 }
 
@@ -48,8 +48,9 @@ impl PartialEq for Sig {
                     && a.clip == b.clip
                     && match (&a.mask, &b.mask) {
                         (None, None) => true,
-                        (Some((e1, b1, t1)), Some((e2, b2, t2))) => {
+                        (Some((e1, s1, b1, t1)), Some((e2, s2, b2, t2))) => {
                             e1 == e2
+                                && s1 == s2
                                 && b1 == b2
                                 && match (t1, t2) {
                                     (None, None) => true,
@@ -115,10 +116,9 @@ impl Display {
                             blend: l.blend,
                             parent: l.parent,
                             clip: l.clip,
-                            mask: l
-                                .mask
-                                .as_ref()
-                                .map(|m| (m.enabled, m.background, m.tile(key).cloned())),
+                            mask: l.mask.as_ref().map(|m| {
+                                (m.enabled, m.show_area, m.background, m.tile(key).cloned())
+                            }),
                             tile: l.tiles.get(key).cloned(),
                         })
                         .collect(),
@@ -128,7 +128,8 @@ impl Display {
                 }
                 let (x0, y0) = (tx * ts, ty * ts);
                 let (w, h) = (ts.min(doc.width - x0), ts.min(doc.height - y0));
-                let img = flatten_rect(doc, x0, y0, w, h);
+                let mut img = flatten_rect(doc, x0, y0, w, h);
+                show_mask_areas(doc, x0, y0, &mut img);
                 let u = Upload {
                     key,
                     w,
@@ -160,6 +161,39 @@ impl Display {
 
     pub fn size(&self) -> (u32, u32) {
         self.size
+    }
+}
+
+/// Show Mask Area (display only): where an enabled mask with the setting on hides, blue
+/// (0,0,255) is laid over the displayed pixel with weight `w = round(75·(255−M)/255)`, the
+/// pixel taken over white where the canvas is transparent. Observed in CSP 1.13.2 screenshots,
+/// 99.95 % exact on stable mask pixels (U-014 run 3).
+fn show_mask_areas(
+    doc: &Document,
+    x0: u32,
+    y0: u32,
+    img: &mut brushye_command::core::render::Image,
+) {
+    for l in doc.layers() {
+        let Some(m) = l.mask.as_ref().filter(|m| m.enabled && m.show_area) else {
+            continue;
+        };
+        for y in 0..img.height {
+            for x in 0..img.width {
+                let v = u32::from(m.value(x0 + x, y0 + y));
+                if v == 255 {
+                    continue;
+                }
+                let w = (75 * (255 - v) + 127) / 255;
+                let i = ((y * img.width + x) * 4) as usize;
+                let a = u32::from(img.px[i + 3]);
+                for (c, blue) in [(0, 0u32), (1, 0), (2, 255)] {
+                    let over_white = (u32::from(img.px[i + c]) * a + 255 * (255 - a) + 127) / 255;
+                    img.px[i + c] = ((over_white * (255 - w) + blue * w + 127) / 255) as u8;
+                }
+                img.px[i + 3] = 255;
+            }
+        }
     }
 }
 

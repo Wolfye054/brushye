@@ -107,6 +107,7 @@ Paint one brush stroke from input samples.
 | `density_pressure` | u8 | optional `key=` | Pen pressure controls density; minimum in percent |
 | `density_curve` | curve points [x,y;…] | optional `key=` | Density pressure curve points [x,y;…] |
 | `samples` | stroke samples | required `key=` | Input samples (b64:… or [x,y,p,t;…]) |
+| `target` | target (layer\|mask) | optional `key=` | Paint the layer's pixels (default) or its mask |
 
 ### `layer.group` (v1, undoable)
 Put a layer in a new folder (Ctrl+G).
@@ -123,6 +124,38 @@ Remove a folder, keeping its contents.
 | Parameter | Kind | Form | Description |
 |---|---|---|---|
 | `folder` | layer id | positional | Folder to ungroup |
+
+### `mask.new` (v1, undoable)
+Create a layer mask (Create layer mask).
+
+| Parameter | Kind | Form | Description |
+|---|---|---|---|
+| `layer` | layer id | positional | Layer or folder |
+| `fill` | mask fill (reveal\|hide) | optional `key=` | reveal (default, the palette button) or hide |
+
+### `mask.delete` (v1, undoable)
+Delete a layer's mask.
+
+| Parameter | Kind | Form | Description |
+|---|---|---|---|
+| `layer` | layer id | positional | Layer or folder |
+
+### `mask.apply` (v1, undoable)
+Apply a mask to its layer's pixels.
+
+| Parameter | Kind | Form | Description |
+|---|---|---|---|
+| `layer` | layer id | positional | Raster layer |
+
+### `mask.set` (v1, undoable)
+Enable, link or show the area of a mask.
+
+| Parameter | Kind | Form | Description |
+|---|---|---|---|
+| `layer` | layer id | positional | Layer or folder |
+| `enabled` | bool | optional `key=` | Enable Mask |
+| `linked` | bool | optional `key=` | Link Mask to Layer |
+| `show_area` | bool | optional `key=` | Show Mask Area |
 
 ### `layer.show` (v1, appstate)
 Show or hide a layer (not undoable, as in CSP).
@@ -146,6 +179,7 @@ Make a layer the active layer.
 | Parameter | Kind | Form | Description |
 |---|---|---|---|
 | `layer` | layer id | positional | Layer to select |
+| `target` | target (layer\|mask) | optional `key=` | Paint the layer (default) or its mask |
 
 ### `input.pressure_curve` (v1, appstate)
 Set the global pen pressure adjustment curve.
@@ -358,6 +392,15 @@ A layer's own pixel at x, y (RGBA).
 | Parameter | Kind | Form | Description |
 |---|---|---|---|
 | `layer` | layer id | positional | Layer |
+| `x` | u32 | required `key=` | x |
+| `y` | u32 | required `key=` | y |
+
+### `?layer.mask_pixel`
+A layer's mask value at x, y.
+
+| Parameter | Kind | Form | Description |
+|---|---|---|---|
+| `layer` | layer id | positional | Layer or folder |
 | `x` | u32 | required `key=` | x |
 | `y` | u32 | required `key=` | y |
 

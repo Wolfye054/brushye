@@ -543,7 +543,10 @@ mod roundtrip {
                 }),
             (id(), any::<bool>())
                 .prop_map(|(layer, visible)| Command::LayerShow(LayerShow { layer, visible })),
-            id().prop_map(|layer| Command::LayerSelect(LayerSelect { layer })),
+            id().prop_map(|layer| Command::LayerSelect(LayerSelect {
+                layer,
+                target: None
+            })),
             Just(Command::HistoryUndo(HistoryUndo {})),
             (id(), any::<[u8; 4]>()).prop_map(|(layer, c)| Command::LayerFill(LayerFill {
                 layer,
@@ -633,6 +636,7 @@ mod roundtrip {
                             samples: brushye_command::params::Samples(
                                 brushye_core::input::canonical(&samples).unwrap_or_default(),
                             ),
+                            target: None,
                         })
                     }
                 ),

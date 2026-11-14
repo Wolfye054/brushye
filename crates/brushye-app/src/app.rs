@@ -730,7 +730,10 @@ impl App {
         };
         let j = if above { i.wrapping_sub(1) } else { i + 1 };
         if let Some(&n) = rows.get(j) {
-            self.exec(Command::LayerSelect(commands::LayerSelect { layer: n }));
+            self.exec(Command::LayerSelect(commands::LayerSelect {
+                layer: n,
+                target: None,
+            }));
         }
     }
 

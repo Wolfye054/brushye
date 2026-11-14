@@ -1127,11 +1127,17 @@ fn layer_row(
     if resp.double_clicked() {
         app.ui.renaming = Some((l.id.0, l.name.clone()));
     } else if resp.clicked() && !selected {
-        app.exec(Command::LayerSelect(commands::LayerSelect { layer: l.id }));
+        app.exec(Command::LayerSelect(commands::LayerSelect {
+            layer: l.id,
+            target: None,
+        }));
     }
     resp.context_menu(|ui| {
         if app.session.active_layer() != Some(l.id) {
-            app.exec(Command::LayerSelect(commands::LayerSelect { layer: l.id }));
+            app.exec(Command::LayerSelect(commands::LayerSelect {
+                layer: l.id,
+                target: None,
+            }));
         }
         super::menus::layer_context_items(app, ui);
     });

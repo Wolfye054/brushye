@@ -18,7 +18,7 @@ use brushye_core::document::DocError;
 use brushye_core::{BlendMode, Document, Layer, LayerId, LayerKind, Rgba8};
 use serde_json::{Value as Json, json};
 
-use crate::commands::{self, Class, Command, Paper, Place, Query};
+use crate::commands::{self, Class, Command, MaskFill, Paper, Place, Query, Target};
 use crate::params::{Arg, value_text};
 use crate::syntax::{Line, RawLine, parse_line, print_line};
 
@@ -107,6 +107,24 @@ fn merge_key(cmd: &Command) -> Option<MergeKey> {
                 keys,
             })
         }
+        // Consecutive changes of the same mask setting merge (H-002).
+        Command::MaskSet(p) => {
+            let mut keys = Vec::new();
+            if p.enabled.is_some() {
+                keys.push("enabled");
+            }
+            if p.linked.is_some() {
+                keys.push("linked");
+            }
+            if p.show_area.is_some() {
+                keys.push("show_area");
+            }
+            Some(MergeKey {
+                cmd: "mask.set",
+                layer: p.layer,
+                keys,
+            })
+        }
         _ => None,
     }
 }
@@ -117,6 +135,8 @@ pub struct Session {
     steps: Vec<Step>,
     pos: usize,
     active: Option<LayerId>,
+    /// The selected layer's mask, not its pixels, is the paint target (app state).
+    active_mask: bool,
     journal: Vec<RawLine>,
     undo_limit: usize,
     merge_open: Option<MergeKey>,
@@ -141,6 +161,7 @@ impl Session {
             steps: Vec::new(),
             pos: 0,
             active: None,
+            active_mask: false,
             journal: Vec::new(),
             undo_limit: DEFAULT_UNDO_LIMIT,
             merge_open: None,
@@ -205,6 +226,11 @@ impl Session {
 
     pub fn active_layer(&self) -> Option<LayerId> {
         self.active
+    }
+
+    /// Whether the selected layer's mask is the paint target (`layer.select … target=mask`).
+    pub fn mask_selected(&self) -> bool {
+        self.active_mask
     }
 
     fn doc(&self) -> Result<&Arc<Document>, ExecError> {
@@ -338,6 +364,11 @@ impl Session {
             Command::LayerDelete(p) if self.active == Some(p.layer) || self.active.is_none() => {
                 self.active = below_deleted;
             }
+            // After Create layer mask the mask is the paint target (U-014).
+            Command::MaskNew(p) => {
+                self.active = Some(p.layer);
+                self.active_mask = true;
+            }
             _ => {}
         }
         self.fix_active();
@@ -381,10 +412,16 @@ impl Session {
                 Ok(())
             }
             Command::LayerSelect(p) => {
-                self.doc()?
+                let l = self
+                    .doc()?
                     .layer(p.layer)
                     .ok_or(DocError::NoSuchLayer(p.layer))?;
+                let mask = p.target == Some(Target::Mask);
+                if mask && l.mask.is_none() {
+                    return Err(ExecError(format!("{} has no mask", p.layer)));
+                }
                 self.active = Some(p.layer);
+                self.active_mask = mask;
                 Ok(())
             }
             _ => Err(ExecError(format!(
@@ -407,6 +444,15 @@ impl Session {
             && d.doc.layer(a).is_none()
         {
             self.active = None;
+        }
+        // The mask target needs a mask.
+        let has_mask = self
+            .active
+            .zip(self.steps.get(self.pos))
+            .and_then(|(a, d)| d.doc.layer(a).map(|l| l.mask.is_some()))
+            .unwrap_or(false);
+        if !has_mask {
+            self.active_mask = false;
         }
     }
 
@@ -440,6 +486,7 @@ impl Session {
                     "paper": d.paper.map(|p| p.to_json()),
                     "layers": d.layers().len(),
                     "active": self.active.map(|a| a.to_string()),
+                    "target": if self.active_mask { "mask" } else { "layer" },
                 })
             }
             Query::LayerList(_) => {
@@ -457,6 +504,16 @@ impl Session {
                 // Renders the whole document; fine for queries, the app renders incrementally.
                 let img = brushye_core::render::flatten(d);
                 json!(img.pixel(p.x, p.y))
+            }
+            Query::MaskPixel(p) => {
+                let d = self.doc()?;
+                in_canvas(d, p.x, p.y)?;
+                let l = d.layer(p.layer).ok_or(DocError::NoSuchLayer(p.layer))?;
+                let m = l
+                    .mask
+                    .as_ref()
+                    .ok_or_else(|| ExecError(format!("{} has no mask", p.layer)))?;
+                json!(m.value(p.x, p.y))
             }
             Query::LayerPixel(p) => {
                 let d = self.doc()?;
@@ -691,6 +748,12 @@ fn layer_json(l: &Layer) -> Json {
         "locked": l.locked,
         "lock_alpha": l.lock_alpha,
         "parent": l.parent.map(|p| p.to_string()),
+        "mask": l.mask.as_ref().map(|m| json!({
+            "enabled": m.enabled,
+            "linked": m.linked,
+            "show_area": m.show_area,
+            "tiles": m.tile_count(),
+        })),
         "clip": l.clip,
         "expanded": l.expanded,
         "tiles": l.tiles.len(),
@@ -725,6 +788,67 @@ fn edit(d: &mut Document, cmd: &Command, pressure_curve: &Curve) -> Result<(), E
             d.group(Layer::new(p.folder, name, LayerKind::Folder), p.layer)?;
         }
         Command::LayerUngroup(p) => d.ungroup(p.folder)?,
+        Command::MaskNew(p) => {
+            let l = d.layer_mut(p.layer)?;
+            if l.mask.is_some() {
+                return Err(ExecError(format!("{} already has a mask", p.layer)));
+            }
+            let bg = match p.fill.unwrap_or(MaskFill::Reveal) {
+                MaskFill::Reveal => 255,
+                MaskFill::Hide => 0,
+            };
+            l.mask = Some(brushye_core::Mask::new(bg));
+        }
+        Command::MaskDelete(p) => {
+            let l = d.layer_mut(p.layer)?;
+            if l.mask.take().is_none() {
+                return Err(ExecError(format!("{} has no mask", p.layer)));
+            }
+        }
+        Command::MaskApply(p) => {
+            let l = d.layer_mut(p.layer)?;
+            if l.is_folder() {
+                // CSP's Apply Mask on a folder is not observed yet.
+                return Err(ExecError(format!(
+                    "{}: applying a folder's mask is not supported yet",
+                    p.layer
+                )));
+            }
+            let m = l
+                .mask
+                .take()
+                .ok_or_else(|| ExecError(format!("{} has no mask", p.layer)))?;
+            // Apply Mask to Layer writes exactly floor(a·M/255) (L-008).
+            let coords: Vec<_> = l.tiles.iter().map(|(c, _)| *c).collect();
+            for c in coords {
+                let mt = m.tile(c).cloned();
+                let t = l.tiles.get_mut(c);
+                for (i, px) in t.px.as_chunks_mut::<4>().0.iter_mut().enumerate() {
+                    let v = mt.as_ref().map_or(m.background, |mt| mt.v[i]);
+                    px[3] = brushye_core::Mask::apply(px[3], v);
+                }
+            }
+            l.tiles.prune();
+        }
+        Command::MaskSet(p) => {
+            if p.enabled.is_none() && p.linked.is_none() && p.show_area.is_none() {
+                return Err(ExecError("mask.set needs at least one setting".into()));
+            }
+            let m = d
+                .layer_mut(p.layer)?
+                .mask
+                .as_mut()
+                .ok_or_else(|| ExecError(format!("{} has no mask", p.layer)))?;
+            if let Some(v) = p.enabled {
+                m.enabled = v;
+            }
+            if let Some(v) = p.linked {
+                m.linked = v;
+            }
+            if let Some(v) = p.show_area {
+                m.show_area = v;
+            }
+        }
         Command::LayerDelete(p) => {
             d.remove_layer(p.layer)?;
         }
@@ -818,11 +942,24 @@ fn edit(d: &mut Document, cmd: &Command, pressure_curve: &Curve) -> Result<(), E
             if l.locked {
                 return Err(DocError::LayerLocked(p.layer).into());
             }
-            if l.is_folder() {
-                return Err(ExecError(format!("{}: can't paint on a folder", p.layer)));
+            if p.target == Some(Target::Mask) {
+                // Masks are painted through a layer whose alpha is the mask value: opaque ink
+                // raises it, the eraser lowers it (L-008).
+                let m = l
+                    .mask
+                    .as_mut()
+                    .ok_or_else(|| ExecError(format!("{} has no mask", p.layer)))?;
+                let mut tmp = m.to_layer(bounds);
+                brushye_core::brush::stroke(&mut tmp, bounds, &settings, &p.samples.0)
+                    .map_err(|e| ExecError(e.to_string()))?;
+                m.set_from_layer(&tmp, bounds);
+            } else {
+                if l.is_folder() {
+                    return Err(ExecError(format!("{}: can't paint on a folder", p.layer)));
+                }
+                brushye_core::brush::stroke(l, bounds, &settings, &p.samples.0)
+                    .map_err(|e| ExecError(e.to_string()))?;
             }
-            brushye_core::brush::stroke(l, bounds, &settings, &p.samples.0)
-                .map_err(|e| ExecError(e.to_string()))?;
         }
         Command::LayerPixels(p) => {
             let need = u64::from(p.w) * u64::from(p.h) * 4;

@@ -63,6 +63,43 @@ impl Arg for Paper {
     }
 }
 
+/// Word-valued enums for the command syntax (`name()` / `from_name()` + [`Arg`]).
+macro_rules! word_enum {
+    ($(#[$m:meta])* $t:ident, $kind:literal, { $($v:ident = $w:literal),* $(,)? }) => {
+        $(#[$m])*
+        #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+        pub enum $t { $($v),* }
+        impl $t {
+            pub fn name(self) -> &'static str { match self { $($t::$v => $w),* } }
+            pub fn from_name(s: &str) -> Option<Self> { match s { $($w => Some($t::$v),)* _ => None } }
+        }
+        impl Arg for $t {
+            const KIND: &'static str = $kind;
+            fn from_value(v: &Value) -> Result<Self, String> {
+                match v {
+                    Value::Word(w) => $t::from_name(w).ok_or_else(|| format!("unknown {} '{w}'", $kind)),
+                    other => Err(format!("expected {}, found {}", $kind, other.kind())),
+                }
+            }
+            fn to_value(&self) -> Value { Value::Word(self.name().into()) }
+            fn to_json(&self) -> Json { Json::String(self.name().into()) }
+            fn from_json(j: &Json) -> Result<Self, String> {
+                j.as_str().and_then($t::from_name).ok_or_else(|| format!("expected {} in JSON", $kind))
+            }
+        }
+    };
+}
+
+word_enum!(
+    /// What a stroke paints, or what is selected for painting: the layer's pixels or its mask.
+    Target, "target (layer|mask)", { Layer = "layer", Mask = "mask" }
+);
+word_enum!(
+    /// A new mask's initial content (U-014: the palette button reveals all; Mask Outside
+    /// Selection with no selection hides all).
+    MaskFill, "mask fill (reveal|hide)", { Reveal = "reveal", Hide = "hide" }
+);
+
 /// `top` or `bottom` of the layer stack.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Place {
@@ -207,6 +244,35 @@ params! {
     /// Make a layer the active (selected) layer (application state).
     pub struct LayerSelect {
         layer: LayerId = pos "Layer to select",
+        target: Option<Target> = opt "Paint the layer (default) or its mask",
+    }
+}
+params! {
+    /// Create layer mask: a new mask that reveals or hides everything (L-008, U-014).
+    pub struct MaskNew {
+        layer: LayerId = pos "Layer or folder",
+        fill: Option<MaskFill> = opt "reveal (default, the palette button) or hide",
+    }
+}
+params! {
+    /// Delete Mask.
+    pub struct MaskDelete {
+        layer: LayerId = pos "Layer or folder",
+    }
+}
+params! {
+    /// Apply Mask to Layer: the layer's alpha becomes floor(a·M/255), and the mask is removed.
+    pub struct MaskApply {
+        layer: LayerId = pos "Raster layer",
+    }
+}
+params! {
+    /// Mask settings (each is a History step in CSP, H-002).
+    pub struct MaskSet {
+        layer: LayerId = pos "Layer or folder",
+        enabled: Option<bool> = opt "Enable Mask",
+        linked: Option<bool> = opt "Link Mask to Layer",
+        show_area: Option<bool> = opt "Show Mask Area",
     }
 }
 params! {
@@ -237,6 +303,7 @@ params! {
         density_pressure: Option<u8> = opt "Pen pressure controls density; minimum in percent",
         density_curve: Option<Curve> = opt "Density pressure curve points [x,y;…]",
         samples: Samples = key "Input samples (b64:… or [x,y,p,t;…])",
+        target: Option<Target> = opt "Paint the layer's pixels (default) or its mask",
     }
 }
 params! {
@@ -463,6 +530,14 @@ params! {
     }
 }
 params! {
+    /// A layer's mask value at canvas coordinates (0 = hidden, 255 = revealed).
+    pub struct QMaskPixel {
+        layer: LayerId = pos "Layer or folder",
+        x: u32 = key "x",
+        y: u32 = key "y",
+    }
+}
+params! {
     /// Deterministic content hash of the current document (hex).
     pub struct QDocHash {}
 }
@@ -590,6 +665,10 @@ registry! {
         BrushStroke(BrushStroke) = "brush.stroke" v 1 Undoable "Paint one brush stroke from input samples",
         LayerGroup(LayerGroup) = "layer.group" v 1 Undoable "Put a layer in a new folder (Ctrl+G)",
         LayerUngroup(LayerUngroup) = "layer.ungroup" v 1 Undoable "Remove a folder, keeping its contents",
+        MaskNew(MaskNew) = "mask.new" v 1 Undoable "Create a layer mask (Create layer mask)",
+        MaskDelete(MaskDelete) = "mask.delete" v 1 Undoable "Delete a layer's mask",
+        MaskApply(MaskApply) = "mask.apply" v 1 Undoable "Apply a mask to its layer's pixels",
+        MaskSet(MaskSet) = "mask.set" v 1 Undoable "Enable, link or show the area of a mask",
         LayerShow(LayerShow) = "layer.show" v 1 AppState "Show or hide a layer (not undoable, as in CSP)",
         LayerExpand(LayerExpand) = "layer.expand" v 1 AppState "Open or close a folder in the Layer palette",
         LayerSelect(LayerSelect) = "layer.select" v 1 AppState "Make a layer the active layer",
@@ -619,6 +698,7 @@ registry! {
         DocHash(QDocHash) = "doc.hash" "Deterministic content hash of the document (hex)",
         Pixel(QPixel) = "pixel" "Rendered pixel at x, y (RGBA)",
         LayerPixel(QLayerPixel) = "layer.pixel" "A layer's own pixel at x, y (RGBA)",
+        MaskPixel(QMaskPixel) = "layer.mask_pixel" "A layer's mask value at x, y",
         History(QHistory) = "history" "Undo history: step labels and current position",
         InputPressureCurve(QInputPressureCurve) = "input.pressure_curve" "The global pen pressure curve's control points",
         Tools(QTools) = "tools" "The current tool and every tool's sub tools",

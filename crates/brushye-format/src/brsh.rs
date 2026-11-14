@@ -28,7 +28,7 @@ use zip::{CompressionMethod, DateTime, ZipArchive, ZipWriter};
 use crate::png_io;
 
 /// Current `.brsh` format version.
-pub const FORMAT_VERSION: u32 = 2;
+pub const FORMAT_VERSION: u32 = 3;
 /// Format id in `manifest.json`.
 pub const FORMAT_ID: &str = "brushye-document";
 /// zstd level for tiles: fast saves (D-014).
@@ -158,6 +158,12 @@ pub fn document_json(doc: &Document, active: Option<LayerId>) -> Json {
             "parent": l.parent.map(|p| p.to_string()),
             "clip": l.clip,
             "expanded": l.expanded,
+            "mask": l.mask.as_ref().map(|m| json!({
+                "background": m.background,
+                "enabled": m.enabled,
+                "linked": m.linked,
+                "show_area": m.show_area,
+            })),
         })).collect::<Vec<_>>(),
     })
 }
@@ -258,6 +264,17 @@ pub fn save(
                 &bytes,
             )?;
         }
+        if let Some(m) = &l.mask {
+            for (&(tx, ty), t) in m.tiles() {
+                let bytes = zstd::bulk::compress(&t.v, ZSTD_LEVEL).map_err(err)?;
+                put(
+                    &mut zw,
+                    &format!("{dir}/mask/{tx}_{ty}.zst"),
+                    stored,
+                    &bytes,
+                )?;
+            }
+        }
     }
     let img = flatten(doc);
     let preview = png_io::png_bytes(&img).map_err(err)?;
@@ -317,7 +334,36 @@ pub type Entries = BTreeMap<String, Vec<u8>>;
 pub type Migration = (u32, fn(&mut Entries) -> Result<(), String>);
 
 /// All format migrations.
-pub const MIGRATIONS: &[Migration] = &[(1, migrate_v1_to_v2)];
+pub const MIGRATIONS: &[Migration] = &[(1, migrate_v1_to_v2), (2, migrate_v2_to_v3)];
+
+/// v2 → v3 (D-023, L-008): layers gain `mask` (null).
+fn migrate_v2_to_v3(e: &mut Entries) -> Result<(), String> {
+    edit_layers(e, |m| {
+        m.insert("mask".into(), Json::Null);
+    })
+}
+
+/// Rewrite every layer object in `document.json`.
+fn edit_layers(
+    e: &mut Entries,
+    mut f: impl FnMut(&mut serde_json::Map<String, Json>),
+) -> Result<(), String> {
+    let raw = e.get("document.json").ok_or("missing document.json")?;
+    let mut doc: Json = serde_json::from_slice(raw).map_err(|x| x.to_string())?;
+    let layers = doc
+        .get_mut("layers")
+        .and_then(Json::as_array_mut)
+        .ok_or("document.json: \"layers\" must be an array")?;
+    for l in layers {
+        f(l.as_object_mut()
+            .ok_or("document.json: a layer is not an object")?);
+    }
+    e.insert(
+        "document.json".into(),
+        serde_json::to_vec(&doc).map_err(|x| x.to_string())?,
+    );
+    Ok(())
+}
 
 /// v1 → v2 (D-023): layers gain `parent` (null), `clip` (false) and `expanded` (true).
 fn migrate_v1_to_v2(e: &mut Entries) -> Result<(), String> {
@@ -566,7 +612,50 @@ pub fn load(bytes: &[u8], strict: bool) -> Result<Loaded, BrshError> {
         };
         layer.clip = lf.bool("clip")?;
         layer.expanded = lf.bool("expanded")?;
+        let mask_json = lf.get("mask").cloned();
         lf.unknown(&mut warnings);
+        if let Some(mj) = mask_json {
+            let mm = mj
+                .as_object()
+                .ok_or_else(|| err(format!("{id}: \"mask\" must be an object or null")))?;
+            let mut mf = Fields::new(format!("{id} mask"), mm);
+            let bg = mf.u32("background")?;
+            let bg = u8::try_from(bg).map_err(|_| err(format!("{id}: mask background {bg}")))?;
+            let mut m = brushye_core::Mask::new(bg);
+            m.enabled = mf.bool("enabled")?;
+            m.linked = mf.bool("linked")?;
+            m.show_area = mf.bool("show_area")?;
+            mf.unknown(&mut warnings);
+            let prefix = format!("{}/mask/", layer_dir(id));
+            for (name, data) in e.range(prefix.clone()..) {
+                let Some(rest) = name.strip_prefix(&prefix) else {
+                    break;
+                };
+                let Some((tx, ty)) = rest
+                    .strip_suffix(".zst")
+                    .and_then(|c| c.split_once('_'))
+                    .and_then(|(a, b)| Some((a.parse::<i32>().ok()?, b.parse::<i32>().ok()?)))
+                else {
+                    continue; // reported as unknown below
+                };
+                if !(0..tiles_x).contains(&tx) || !(0..tiles_y).contains(&ty) {
+                    return Err(err(format!("{name}: mask tile outside the canvas")));
+                }
+                let v = zstd::bulk::decompress(data, TILE_SIZE * TILE_SIZE)
+                    .map_err(|x| err(format!("{name}: {x}")))?;
+                if v.len() != TILE_SIZE * TILE_SIZE {
+                    return Err(err(format!(
+                        "{name}: mask tile has {} bytes, expected {}",
+                        v.len(),
+                        TILE_SIZE * TILE_SIZE
+                    )));
+                }
+                m.put_tile((tx, ty), v.into_boxed_slice());
+                known.push(name.clone());
+            }
+            m.prune();
+            layer.mask = Some(m);
+        }
 
         let dir = layer_dir(id);
         let meta_name = format!("{dir}/layer.json");

@@ -461,6 +461,27 @@ mod golden {
         assert_eq!(hash(&mut r), "e2216651ff3431e3");
     }
 
+    /// Format 3 (D-023, L-008): a painted mask with Show Mask Area on, a disabled hide-all
+    /// folder mask.
+    #[test]
+    fn golden_v3_document_opens_and_replays() {
+        use brushye_command::core::LayerId;
+        let l = brsh::load(&data("golden_v3.brsh"), true).unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(l.file_version, 3);
+        assert_eq!(format!("{:016x}", l.doc.content_hash()), "9551df11dea2a9d5");
+        let ink = l.doc.layer(LayerId(2)).unwrap_or_else(|| panic!("L2"));
+        let m = ink.mask.as_ref().unwrap_or_else(|| panic!("L2 mask"));
+        assert!(m.enabled && m.show_area && m.tile_count() > 0);
+        assert_eq!(m.value(150, 110), 0);
+        let f = l.doc.layer(LayerId(10)).unwrap_or_else(|| panic!("L10"));
+        let fm = f.mask.as_ref().unwrap_or_else(|| panic!("L10 mask"));
+        assert!(!fm.enabled && fm.background == 0 && fm.tile_count() == 0);
+        // The embedded journal replays to the saved document (D-021 applies to its stroke).
+        let mut r =
+            Session::replay(&l.journal.unwrap_or_default()).unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(hash(&mut r), "9551df11dea2a9d5");
+    }
+
     #[test]
     fn golden_v1_brush_opens() {
         let (b, w) =

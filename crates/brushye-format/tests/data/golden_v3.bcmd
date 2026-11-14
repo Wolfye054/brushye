@@ -1,0 +1,12 @@
+doc.new 300 200 paper=#f0e8d8
+layer.new L1 name="Base"
+layer.fill L1 color=#3060a0
+layer.new L2 name="Ink"
+layer.fill L2 color=#ff8000c0
+mask.new L2
+brush.stroke L2 color=#000000 size=40 ink=erase samples=[20,100,1,0;280,120,1,20000] target=mask
+mask.set L2 show_area=true
+layer.group L10 layer=L2 name="Folder"
+mask.new L10 fill=hide
+mask.set L10 enabled=false
+layer.select L2 target=mask

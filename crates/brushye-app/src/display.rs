@@ -9,6 +9,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use brushye_command::core::mask::MaskTile;
 use brushye_command::core::render::flatten_rect;
 use brushye_command::core::{BlendMode, Document, LayerId, Rgba8, TILE_SIZE, Tile};
 
@@ -20,6 +21,11 @@ struct LayerSig {
     visible: bool,
     opacity: u8,
     blend: BlendMode,
+    /// Folder structure and clipping change how layers combine (D-023).
+    parent: Option<LayerId>,
+    clip: bool,
+    /// Mask settings that affect rendering, and the mask's tile here (L-008).
+    mask: Option<(bool, u8, Option<Arc<MaskTile>>)>,
     tile: Option<Arc<Tile>>,
 }
 
@@ -38,6 +44,21 @@ impl PartialEq for Sig {
                     && a.visible == b.visible
                     && a.opacity == b.opacity
                     && a.blend == b.blend
+                    && a.parent == b.parent
+                    && a.clip == b.clip
+                    && match (&a.mask, &b.mask) {
+                        (None, None) => true,
+                        (Some((e1, b1, t1)), Some((e2, b2, t2))) => {
+                            e1 == e2
+                                && b1 == b2
+                                && match (t1, t2) {
+                                    (None, None) => true,
+                                    (Some(x), Some(y)) => Arc::ptr_eq(x, y),
+                                    _ => false,
+                                }
+                        }
+                        _ => false,
+                    }
                     && match (&a.tile, &b.tile) {
                         (None, None) => true,
                         (Some(x), Some(y)) => Arc::ptr_eq(x, y),
@@ -92,6 +113,12 @@ impl Display {
                             visible: l.visible,
                             opacity: l.opacity,
                             blend: l.blend,
+                            parent: l.parent,
+                            clip: l.clip,
+                            mask: l
+                                .mask
+                                .as_ref()
+                                .map(|m| (m.enabled, m.background, m.tile(key).cloned())),
                             tile: l.tiles.get(key).cloned(),
                         })
                         .collect(),
@@ -187,6 +214,37 @@ mod tests {
                     assert_eq!(&u.px[i..i + 4], &p);
                 }
             }
+        }
+    }
+
+    /// Clipping, folders and masks change what a tile shows, so they are part of the
+    /// signature (a mask edit touches no layer pixels).
+    #[test]
+    fn structure_and_mask_changes_recomposite() {
+        let mut s = Session::new();
+        let run = |s: &mut Session, t: &str| {
+            s.run_script(t).unwrap_or_else(|e| unreachable!("{e}"));
+        };
+        run(
+            &mut s,
+            "doc.new 300 100\nlayer.new L1\nlayer.fill L1 color=#336699\nlayer.new L2\n\
+             layer.fill L2 color=#ff0000\nmask.new L2",
+        );
+        let mut d = Display::default();
+        let mut changed = |s: &Session| {
+            let doc = s.document().unwrap_or_else(|| unreachable!("doc"));
+            d.update(&doc).0.len()
+        };
+        assert_eq!(changed(&s), 2);
+        assert_eq!(changed(&s), 0);
+        for step in [
+            "layer.set L2 clip=true",
+            "brush.stroke L2 color=#000000 size=10 ink=erase samples=[280,50,1,0] target=mask",
+            "mask.set L2 enabled=false",
+            "layer.group L5 layer=L1",
+        ] {
+            run(&mut s, step);
+            assert!(changed(&s) > 0, "{step} must recomposite");
         }
     }
 }

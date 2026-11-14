@@ -32,6 +32,8 @@ enum Source {
 struct Live {
     stroke: LiveStroke,
     layer: LayerId,
+    /// Painting the layer's mask (the stroke runs on the mask as a layer, L-008).
+    mask: bool,
     preset: BrushPreset,
     color: [u8; 3],
     source: Source,
@@ -592,6 +594,65 @@ impl App {
         }
     }
 
+    /// Create layer mask (palette button: reveal all) or Mask Outside Selection with no
+    /// selection (hide all) (U-014).
+    pub(crate) fn create_mask(&mut self, hide: bool) {
+        if let Some(layer) = self.session.active_layer() {
+            self.exec(Command::MaskNew(commands::MaskNew {
+                layer,
+                fill: Some(if hide {
+                    commands::MaskFill::Hide
+                } else {
+                    commands::MaskFill::Reveal
+                }),
+            }));
+        }
+    }
+
+    pub(crate) fn delete_mask(&mut self) {
+        if let Some(layer) = self.session.active_layer() {
+            self.exec(Command::MaskDelete(commands::MaskDelete { layer }));
+        }
+    }
+
+    pub(crate) fn apply_mask(&mut self) {
+        if let Some(layer) = self.session.active_layer() {
+            self.exec(Command::MaskApply(commands::MaskApply { layer }));
+        }
+    }
+
+    /// The selected layer's mask, if any.
+    pub(crate) fn active_mask(&self) -> Option<brushye_command::core::Mask> {
+        self.active_layer().and_then(|l| l.mask)
+    }
+
+    /// Toggle Enable Mask (0), Show Mask Area (1) or Link Mask to Layer (2).
+    pub(crate) fn toggle_mask(&mut self, which: u8) {
+        let (Some(layer), Some(m)) = (self.session.active_layer(), self.active_mask()) else {
+            return;
+        };
+        let mut c = commands::MaskSet {
+            layer,
+            enabled: None,
+            linked: None,
+            show_area: None,
+        };
+        match which {
+            0 => c.enabled = Some(!m.enabled),
+            1 => c.show_area = Some(!m.show_area),
+            _ => c.linked = Some(!m.linked),
+        }
+        self.exec(Command::MaskSet(c));
+    }
+
+    /// Select a layer and what to paint: its pixels or its mask.
+    pub(crate) fn select_target(&mut self, layer: LayerId, mask: bool) {
+        self.exec(Command::LayerSelect(commands::LayerSelect {
+            layer,
+            target: mask.then_some(commands::Target::Mask),
+        }));
+    }
+
     pub(crate) fn delete_layer(&mut self) {
         if let Some(id) = self.session.active_layer() {
             self.exec(Command::LayerDelete(commands::LayerDelete { layer: id }));
@@ -1138,6 +1199,11 @@ impl App {
             self.status = format!("{} is locked", layer.name);
             return false;
         }
+        let mask = self.session.mask_selected() && layer.mask.is_some();
+        if layer.is_folder() && !mask {
+            self.status = format!("{} is a folder", layer.name);
+            return false;
+        }
         let Some(mut preset) = self.ui.current_preset(tool).cloned() else {
             return false;
         };
@@ -1157,11 +1223,17 @@ impl App {
                 return false;
             }
         };
-        match LiveStroke::new(Layer::clone(layer), (doc.width, doc.height), settings) {
+        let bounds = (doc.width, doc.height);
+        let target = match (&layer.mask, mask) {
+            (Some(m), true) => m.to_layer(bounds),
+            _ => Layer::clone(layer),
+        };
+        match LiveStroke::new(target, bounds, settings) {
             Ok(stroke) => {
                 self.live = Some(Live {
                     stroke,
                     layer: id,
+                    mask,
                     preset,
                     color,
                     source,
@@ -1223,9 +1295,12 @@ impl App {
                 return;
             }
         };
-        let cmd = live
+        let mut cmd = live
             .preset
             .to_stroke(live.layer, live.color, Samples(samples));
+        if live.mask {
+            cmd.target = Some(commands::Target::Mask);
+        }
         if self.exec(Command::BrushStroke(cmd)) && live.preset.ink != Some(InkMode::Erase) {
             self.ui.colour.used();
         }
@@ -1436,8 +1511,15 @@ impl App {
         let shown: Arc<Document> = match &self.live {
             Some(l) => {
                 let mut d = Document::clone(&doc);
+                let bounds = (d.width, d.height);
                 if let Ok(layer) = d.layer_mut(l.layer) {
-                    *layer = l.stroke.preview().clone();
+                    if l.mask {
+                        if let Some(m) = layer.mask.as_mut() {
+                            m.set_from_layer(l.stroke.preview(), bounds);
+                        }
+                    } else {
+                        *layer = l.stroke.preview().clone();
+                    }
                 }
                 Arc::new(d)
             }

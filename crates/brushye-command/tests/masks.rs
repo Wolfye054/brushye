@@ -64,7 +64,10 @@ fn create_paint_apply_and_undo() {
     let steps = |s: &mut Session| q(s, "?history")["steps"].as_array().map(Vec::len);
     run(&mut s, "mask.set L2 enabled=false");
     let before = steps(&mut s);
-    run(&mut s, "mask.set L2 enabled=true\nmask.set L2 show_area=true");
+    run(
+        &mut s,
+        "mask.set L2 enabled=true\nmask.set L2 show_area=true",
+    );
     assert_eq!(steps(&mut s), before.map(|n| n + 1));
     run(&mut s, "mask.set L2 enabled=false");
     assert_eq!(q(&mut s, "?pixel x=32 y=32"), q(&mut s, "?pixel x=32 y=5"));

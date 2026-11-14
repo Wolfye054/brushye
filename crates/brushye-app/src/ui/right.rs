@@ -609,7 +609,20 @@ fn layers(app: &mut App, ui: &mut Ui, c: &Colors, body: Rect) {
                 false,
             );
             widgets::icon_button(ui, c, icons::RULER, "Set ruler range", s, false, false);
-            widgets::icon_button(ui, c, icons::MASK_HAPPY, "Enable mask", s, false, false);
+            let mask = layer.as_ref().and_then(|l| l.mask.as_ref());
+            if widgets::icon_button(
+                ui,
+                c,
+                icons::MASK_HAPPY,
+                "Enable mask",
+                s,
+                mask.is_some(),
+                mask.is_some_and(|m| m.enabled),
+            )
+            .clicked()
+            {
+                app.toggle_mask(0);
+            }
             if let Some(l) = &layer {
                 if widgets::icon_button(
                     ui,
@@ -670,6 +683,8 @@ fn layers(app: &mut App, ui: &mut Ui, c: &Colors, body: Rect) {
     });
     let mut new_layer = false;
     let mut new_folder = false;
+    let mut create_mask = false;
+    let mut apply_mask = false;
     let mut delete = false;
     let can_delete = app.can_delete_layer();
     widgets::area(ui, row2, |ui| {
@@ -688,24 +703,34 @@ fn layers(app: &mut App, ui: &mut Ui, c: &Colors, body: Rect) {
                 delete =
                     widgets::icon_button(ui, c, icons::TRASH, "Delete layer", s, can_delete, false)
                         .clicked();
-                widgets::icon_button(
+                let has_mask = layer.as_ref().is_some_and(|l| l.mask.is_some());
+                let raster = layer.as_ref().is_some_and(|l| !l.is_folder());
+                if widgets::icon_button(
                     ui,
                     c,
                     icons::ARROW_LINE_DOWN,
                     "Apply mask to layer",
                     s,
+                    has_mask && raster && can_edit,
                     false,
-                    false,
-                );
-                widgets::icon_button(
+                )
+                .clicked()
+                {
+                    apply_mask = true;
+                }
+                if widgets::icon_button(
                     ui,
                     c,
                     icons::MASK_HAPPY,
                     "Create layer mask",
                     s,
+                    !has_mask && can_edit,
                     false,
-                    false,
-                );
+                )
+                .clicked()
+                {
+                    create_mask = true;
+                }
                 widgets::icon_button(
                     ui,
                     c,
@@ -761,6 +786,12 @@ fn layers(app: &mut App, ui: &mut Ui, c: &Colors, body: Rect) {
     }
     if new_folder {
         app.new_folder();
+    }
+    if create_mask {
+        app.create_mask(false);
+    }
+    if apply_mask {
+        app.apply_mask();
     }
     if delete && let Some(l) = &layer {
         app.exec(Command::LayerDelete(commands::LayerDelete { layer: l.id }));
@@ -944,11 +975,13 @@ fn layer_row(
 ) -> (Rect, egui::Id) {
     let l: &Layer = &row.layer;
     let w = ui.available_width();
-    let h = if l.is_folder() {
+    // A folder row has layer height when it shows a mask thumbnail (U-014).
+    let h = if l.is_folder() && l.mask.is_none() {
         FOLDER_ROW
     } else {
         m::LAYER_ROW
     };
+    let mask_target = selected && app.session.mask_selected();
     let (rr, resp) = ui.allocate_exact_size(vec2(w, h), Sense::click_and_drag());
     let eye = Rect::from_min_size(rr.min, vec2(20.0, h - 1.0));
     let pen = Rect::from_min_size(pos2(eye.right(), rr.top()), vec2(19.0, h - 1.0));
@@ -1031,7 +1064,14 @@ fn layer_row(
             15.0,
             c.icon,
         );
-        (arrow.right() + 24.0, rr.top() + 9.0, rr.top() + 21.0)
+        let after = arrow.right() + 20.0;
+        match &l.mask {
+            Some(_) => {
+                let x = mask_thumb(app, ui, c, doc, l, after, rr.top() + 1.0, mask_target);
+                (x, rr.top() + 11.0, rr.top() + 29.0)
+            }
+            None => (after + 4.0, rr.top() + 9.0, rr.top() + 21.0),
+        }
     } else {
         if let Some(on) = row.clip {
             let bar = Rect::from_min_size(pos2(x0, rr.top() + 1.0), vec2(CLIP_BAR, 38.0));
@@ -1050,7 +1090,37 @@ fn layer_row(
             Stroke::new(1.0, c.splitter),
             egui::StrokeKind::Outside,
         );
-        (thumb.right() + 6.0, rr.top() + 11.0, rr.top() + 29.0)
+        // The paint target has a white frame (U-014); clicking a thumbnail picks it.
+        if selected && !mask_target && l.mask.is_some() {
+            ui.painter().rect_stroke(
+                thumb.expand(1.0),
+                0.0,
+                Stroke::new(1.5, Color32::WHITE),
+                egui::StrokeKind::Outside,
+            );
+        }
+        if l.mask.is_some()
+            && ui
+                .interact(thumb, resp.id.with("thumb"), Sense::click())
+                .clicked()
+        {
+            app.select_target(l.id, false);
+        }
+        let x = if l.mask.is_some() {
+            mask_thumb(
+                app,
+                ui,
+                c,
+                doc,
+                l,
+                thumb.right(),
+                rr.top() + 1.0,
+                mask_target,
+            )
+        } else {
+            thumb.right() + 6.0
+        };
+        (x, rr.top() + 11.0, rr.top() + 29.0)
     };
     let small = egui::FontId::proportional(10.0);
     let head = ui.painter().text(
@@ -1179,6 +1249,116 @@ fn paper_row(ui: &mut Ui, c: &Colors, paper: [u8; 4]) {
         ],
         Stroke::new(1.0, c.row_separator),
     );
+}
+
+/// The link mark and mask thumbnail after `x` (U-014): the mask in grey levels (white =
+/// revealed), a red X when the mask is disabled, a white frame when it is the paint target.
+/// Clicking it selects the mask. Returns where the row text starts.
+#[allow(clippy::too_many_arguments)]
+fn mask_thumb(
+    app: &mut App,
+    ui: &mut Ui,
+    c: &Colors,
+    doc: &Document,
+    l: &Layer,
+    x: f32,
+    top: f32,
+    target: bool,
+) -> f32 {
+    let Some(m) = &l.mask else { return x + 6.0 };
+    let link = Rect::from_min_size(pos2(x + 2.0, top), vec2(12.0, 38.0));
+    if m.linked {
+        widgets::draw_icon(ui, link.center(), icons::CHECK, 10.0, c.icon_dim);
+    }
+    let r = Rect::from_min_size(pos2(link.right() + 2.0, top), vec2(38.0, 38.0));
+    let tex = mask_thumbnail(app, ui, doc, l, m);
+    ui.painter().image(
+        tex.id(),
+        r,
+        Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)),
+        Color32::WHITE,
+    );
+    ui.painter().rect_stroke(
+        r,
+        0.0,
+        Stroke::new(1.0, c.splitter),
+        egui::StrokeKind::Outside,
+    );
+    if !m.enabled {
+        let red = Stroke::new(2.0, Color32::from_rgb(230, 30, 30));
+        let k = r.shrink(4.0);
+        ui.painter()
+            .line_segment([k.left_top(), k.right_bottom()], red);
+        ui.painter()
+            .line_segment([k.right_top(), k.left_bottom()], red);
+    }
+    if target {
+        ui.painter().rect_stroke(
+            r.expand(1.0),
+            0.0,
+            Stroke::new(1.5, Color32::WHITE),
+            egui::StrokeKind::Outside,
+        );
+    }
+    if ui
+        .interact(
+            r,
+            ui.scope_id().with(("mask-thumb", l.id.0)),
+            Sense::click(),
+        )
+        .clicked()
+    {
+        app.select_target(l.id, true);
+    }
+    r.right() + 6.0
+}
+
+/// A mask's 38 px thumbnail (grey levels), cached like layer thumbnails.
+fn mask_thumbnail(
+    app: &mut App,
+    ui: &Ui,
+    doc: &Document,
+    l: &Layer,
+    m: &brushye_command::core::Mask,
+) -> egui::TextureHandle {
+    let key = l.id.0 | 1 << 31;
+    let sig: Vec<usize> = [
+        doc.width as usize,
+        doc.height as usize,
+        m.background as usize,
+    ]
+    .into_iter()
+    .chain(m.tiles().map(|(_, t)| Arc::as_ptr(t) as usize))
+    .collect();
+    if let Some((s, tex)) = app.ui.thumbs.get(&key)
+        && (*s == sig || app.is_drawing())
+    {
+        return tex.clone();
+    }
+    let n = 38usize;
+    let (w, h) = (doc.width as f32, doc.height as f32);
+    let k = (n as f32 / w).min(n as f32 / h);
+    let (ox, oy) = ((n as f32 - w * k) / 2.0, (n as f32 - h * k) / 2.0);
+    let mut px = vec![0u8; n * n * 4];
+    for y in 0..n {
+        for x in 0..n {
+            let (cx, cy) = ((x as f32 + 0.5 - ox) / k, (y as f32 + 0.5 - oy) / k);
+            let v = if cx >= 0.0 && cy >= 0.0 && cx < w && cy < h {
+                m.value(cx as u32, cy as u32)
+            } else {
+                60
+            };
+            let i = (y * n + x) * 4;
+            px[i..i + 4].copy_from_slice(&[v, v, v, 255]);
+        }
+    }
+    let tex = ui.ctx().load_texture(
+        format!("mask-thumb-{}", l.id.0),
+        ColorImage::from_rgba_unmultiplied([n, n], &px),
+        egui::TextureOptions::LINEAR,
+    );
+    app.ui.thumbs.insert(key, (sig, tex.clone()));
+    tex
 }
 
 /// A layer's 38 px thumbnail, recomputed only when its tiles change (sampled, not resampled:

@@ -292,7 +292,41 @@ pub fn layer_context_items(app: &mut App, ui: &mut Ui) {
         app.delete_layer();
     }
     ui.separator();
-    sub(ui, "Layer mask", false, |_| {});
+    let mask = app.active_mask();
+    sub(ui, "Layer mask", has_layer, |ui| {
+        // No selections yet: Mask Outside Selection with no selection hides everything
+        // (U-014). Mask Selection without a selection is not observed yet.
+        if item(
+            ui,
+            "Mask outside selection",
+            "",
+            mask.is_none() && app.can_edit_layer(),
+        ) {
+            app.create_mask(true);
+        }
+        item(ui, "Mask selection", "", false);
+        ui.separator();
+        if item(ui, "Delete mask", "", mask.is_some()) {
+            app.delete_mask();
+        }
+        let raster = !app.active_is_folder();
+        if item(ui, "Apply mask to layer", "", mask.is_some() && raster) {
+            app.apply_mask();
+        }
+        ui.separator();
+        let (on, area, link) = mask.as_ref().map_or((false, false, false), |m| {
+            (m.enabled, m.show_area, m.linked)
+        });
+        if check(ui, "Enable mask", "", on, mask.is_some()) {
+            app.toggle_mask(0);
+        }
+        if check(ui, "Show mask area", "", area, mask.is_some()) {
+            app.toggle_mask(1);
+        }
+        if check(ui, "Link mask to layer", "", link, mask.is_some()) {
+            app.toggle_mask(2);
+        }
+    });
     sub(ui, "Ruler/Frame", false, |_| {});
     sub(ui, "File object", false, |_| {});
     sub(ui, "Layer settings", has_layer, |ui| {

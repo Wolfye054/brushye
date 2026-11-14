@@ -114,3 +114,5 @@ Rules learned the hard way:
 - Screenshot-check after each export. A click meant for a dialog that didn't open lands on the
   canvas and paints a dot.
 
+- Stop helper processes by PID (`ps -eo pid,comm,args`), never with `pkill -f`/`pgrep -f` on a
+  pattern that also appears in your own shell's command line: it kills that shell.

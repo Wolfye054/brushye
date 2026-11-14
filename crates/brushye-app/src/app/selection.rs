@@ -237,6 +237,11 @@ impl App {
                     g.start[1].max(g.cur[1]).floor(),
                 );
                 if x1 <= x0 || y1 <= y0 {
+                    // A click without a drag outside the selection deselects (New mode,
+                    // S-001 run 3); inside it, it keeps the selection (handled as a move).
+                    if g.mode == SelectMode::New {
+                        self.select_none();
+                    }
                     return;
                 }
                 let cmd = if g.kind == SubKind::Rectangle {

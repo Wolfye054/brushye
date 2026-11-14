@@ -979,11 +979,19 @@ mod tests {
             (j["name"].as_str(), j["kind"].as_str()),
             (Some("Erase selection"), Some("erase_selection"))
         );
-        assert!(j["settings"].as_str().is_some_and(|t| t.contains("mode=subtract")));
+        assert!(
+            j["settings"]
+                .as_str()
+                .is_some_and(|t| t.contains("mode=subtract"))
+        );
         run(&mut s, "subtool.set item=1 mode=intersect");
         let j = q(&mut s, "?subtool tool=selection item=1");
         assert_eq!(j["kind"], "ellipse");
-        assert!(j["settings"].as_str().is_some_and(|t| t.contains("mode=intersect")));
+        assert!(
+            j["settings"]
+                .as_str()
+                .is_some_and(|t| t.contains("mode=intersect"))
+        );
         // A copy keeps its kind.
         run(&mut s, "subtool.copy tool=selection item=2");
         assert_eq!(q(&mut s, "?subtool tool=selection item=3")["kind"], "lasso");

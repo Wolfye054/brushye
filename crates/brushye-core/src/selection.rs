@@ -5,13 +5,16 @@
 //! - Rectangle: the integer box [x, x+w) × [y, y+h), binary.
 //! - Modes: Add `min(A+B, 255)`, Subtract `max(A−B, 0)`, Intersect `floor(A·B/255)`.
 //! - Invert: `255 − S`. Expand/Shrink: square = Chebyshev dilation/erosion by w, rounded =
-//!   the disk `dx² + dy² < (w+1)²` (observed at w = 10 on binary selections).
+//!   the disk `dx² + dy² < (w+1)²` (exact at w = 1, 2 and 10; w = 3 and 25 differ, run 3).
+//!   On anti-aliased edges both are grey max/min (exact, run 3).
 //! - Painting clipped to a selection: the unquantised stroke alpha times S/255 (run 2).
+//! - Polygons (Polyline, run 3): AA none = pixel centres inside (exact); AA = four
+//!   sub-scanlines at y + k/4 with exact horizontal coverage, `round(255·c/4)` (±1 on a third
+//!   of the edge pixels: the rounding is open).
 //!
-//! Open: the ellipse and polygon edge rule. Both use the scanline coverage below (AA: four
-//! sub-scanlines with exact horizontal coverage; none: pixel centres). It is close to CSP's
-//! but not exact (S-001), so by D-024 it may change before 1.0. Morphology on partial values
-//! (grey max/min here) is not observed either.
+//! Open: the ellipse edge. CSP samples the same sub-scanlines, but its curve runs slightly
+//! inside a true ellipse away from the equator (S-001 run 3); the true ellipse is used here, so
+//! by D-024 the edge may change before 1.0.
 
 use crate::mask::Grid8;
 use crate::tile::TILE_SIZE;
@@ -228,8 +231,8 @@ fn polygon_spans(pts: &[[f64; 2]], ys: f64) -> Vec<(f64, f64)> {
 }
 
 /// Scanline fill: `spans(y)` gives the inside intervals on the line y. With `aa`, a pixel's
-/// value is its horizontal coverage averaged over 4 sub-scanlines; without, a pixel is in when
-/// its centre is.
+/// value is its horizontal coverage averaged over the sub-scanlines y + k/4 (S-001 run 3);
+/// without, a pixel is in when its centre is.
 fn scan(w: u32, h: u32, aa: bool, spans: impl Fn(f64) -> Vec<(f64, f64)>) -> Vec<u8> {
     let (wu, hu) = (w as usize, h as usize);
     let mut v = vec![0u8; wu * hu];
@@ -250,7 +253,7 @@ fn scan(w: u32, h: u32, aa: bool, spans: impl Fn(f64) -> Vec<(f64, f64)>) -> Vec
         acc.fill(0.0);
         let mut any = false;
         for k in 0..4 {
-            for (a, b) in spans(y as f64 + (k as f64 + 0.5) / 4.0) {
+            for (a, b) in spans(y as f64 + k as f64 / 4.0) {
                 let (a, b) = (a.max(0.0), b.min(w as f64));
                 if a >= b {
                     continue;

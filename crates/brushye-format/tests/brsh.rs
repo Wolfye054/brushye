@@ -506,7 +506,9 @@ mod golden {
         assert_eq!((last.value(100, 75), last.value(10, 10)), (255, 0));
         let mut r =
             Session::replay(&l.journal.unwrap_or_default()).unwrap_or_else(|e| panic!("{e}"));
-        assert_eq!(hash(&mut r), "93ed9bb6677be39d");
+        // The saved pixels are fixed; the replay follows selection edge fixes until 1.0
+        // (D-024; 2026-11-14: sub-scanlines at y + k/4, S-001 run 3).
+        assert_eq!(hash(&mut r), "9b2ee3f9243a3a7b");
     }
 
     /// Older files gain no selection when migrated to v4.

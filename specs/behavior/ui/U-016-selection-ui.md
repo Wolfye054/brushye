@@ -34,5 +34,5 @@
 - Selection Launcher position when the selection is near the canvas bottom, and the Launcher
   Settings dialog.
 - Modifier keys for the selection modes (the buttons themselves: S-001 run 2).
-- Polyline closing gesture (Brushye: click the first corner, double-click or Enter; Esc
-  cancels) and a click without a drag (Brushye: nothing): not observed.
+- Polyline: clicking the first corner or double-clicking closes it (S-001 run 3); Enter/Esc
+  (Brushye: close/cancel) not observed. A click without a drag deselects (New mode, run 3).

@@ -180,3 +180,89 @@ fn strokes_are_clipped_by_the_selection() {
         }
     }
 }
+
+/// S-001 run 3 data (`data/run3`).
+fn alpha3(name: &str) -> Vec<u8> {
+    alpha(&format!("run3/{name}"))
+}
+
+/// A Polyline triangle with known corners: AA none exact; AA within ±1 (rounding open).
+#[test]
+fn polygon_edges() {
+    let tri = |aa| {
+        rasterize(
+            &Shape::Polygon {
+                points: vec![[100.0, 100.0], [300.0, 130.0], [150.0, 300.0]],
+                aa,
+            },
+            W,
+            H,
+        )
+    };
+    assert_eq!(mismatches(&tri(false), &alpha3("tri_aa_none")), 0);
+    let (got, want) = (tri(true), alpha3("tri_aa_middle"));
+    assert!(got.iter().zip(&want).all(|(a, b)| a.abs_diff(*b) <= 1));
+    assert!(mismatches(&got, &want) <= 211);
+}
+
+/// Expand and Shrink on an anti-aliased ellipse: grey max/min over the square or the disk.
+#[test]
+fn morphology_on_soft_edges() {
+    let s = alpha3("S_E1");
+    for (round, grow, name) in [
+        (false, true, "eE1_exp5_square"),
+        (true, true, "eE1_exp5_round"),
+        (false, false, "eE1_shr5_square"),
+        (true, false, "eE1_shr5_round"),
+    ] {
+        assert_eq!(
+            mismatches(&morph(&s, W, H, 5, round, grow, 0), &alpha3(name)),
+            0,
+            "{name}"
+        );
+    }
+    // Rounded expansion of the rectangle: the disk rule holds at w = 1 and 2 (open at 3, 25).
+    for w in [1, 2] {
+        let e = morph(&rect(), W, H, w, true, true, 0);
+        assert_eq!(
+            mismatches(&e, &alpha3(&format!("rect_exp{w}_round"))),
+            0,
+            "w={w}"
+        );
+    }
+}
+
+/// Edit > Fill over existing pixels lays the colour on like Normal ink with alpha S: exact over
+/// an opaque layer, and all but one pixel over a partly transparent one.
+#[test]
+fn fill_over_existing_pixels() {
+    use brushye_core::brush::{InkMode, ink};
+    let rgba = |n: &str| Img::load_spec("selection", &format!("run3/{n}.png")).px;
+    for (sel, backdrop, want, limit) in [
+        ("S_E1", None, "fill_white_over_black", 0),
+        ("S_E3", Some("del_backdrop"), "fill_white_over_partial", 1),
+    ] {
+        let s = alpha3(sel);
+        let back = backdrop.map(rgba);
+        let want = rgba(want);
+        let mut bad = 0;
+        for (i, &v) in s.iter().enumerate() {
+            if v == 0 {
+                continue;
+            }
+            let dst = back.as_ref().map_or([0, 0, 0, 255], |b| b[i]);
+            let got = ink::apply(
+                InkMode::Normal,
+                dst,
+                [255, 255, 255],
+                f64::from(v) / 255.0,
+                false,
+            );
+            let w = want[i];
+            if got[3] != w[3] || (w[3] > 0 && got[..3] != w[..3]) {
+                bad += 1;
+            }
+        }
+        assert!(bad <= limit, "{sel}: {bad}");
+    }
+}

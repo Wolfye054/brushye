@@ -134,10 +134,73 @@ inside the current selection makes a new shape; it doesn't move the selection.
   take it.
 - Menu items in a submenu need a hover pause before the click.
 
+## Run 3 (2026-11-14, pen display :78, mouse via XTEST)
+Same setup; data in `data/run3/`. Readouts as before (Edit > Fill on an empty layer, alpha = S).
+
+### Ellipse and polygon edges
+- Seven ellipses in one selection (New, then Add), boxes [100,111)×[100,107), [150,187)×[100,121),
+  [250,351)×[100,151), [400,500)×[100,200), [550,553)×[100,103), [600,780)×[100,113),
+  [100,113)×[300,500); AA Middle (`ells_aa_middle`) and None (`ells_aa_none`). Every ellipse
+  fills exactly its box.
+- **AA:** partial values climb in steps of 64 (64, 128, 191 plateaus with one partial pixel
+  between them), so each pixel row is sampled by **four sub-scanlines**, each adding its exact
+  horizontal coverage × 64. The sub-scanlines sit at **y + k/4, k = 0..3**: the top-centre
+  pixel of the 11×7 ellipse is 193, not 191 (the line y = 100 grazes the ellipse), and the
+  shapes are shifted ⅛ px down (bottom rows more covered than top rows).
+- The ellipse itself is not exactly the true ellipse of the box: measured per sub-scanline,
+  the edge of the 100 px circle runs at an effective radius 49.6–49.9 px away from the equator
+  (50.0 there). An inscribed polygon (8–256 sides) and a uniform radius shrink don't fit either.
+  **Open** (Brushye uses the true ellipse with the k/4 sub-scanlines: about 2 000 pixels off
+  by up to 66 over the eight ellipses).
+- AA None: the 3×3 ellipse selects all 9 pixels; the larger ones are close to, but not
+  exactly, a pixel-centre test. Open with the curve.
+- **Polyline triangle** (100,100) → (300,130) → (150,300), corners by clicks (`tri_aa_none`,
+  `tri_aa_middle`): AA None = **pixel centres inside, exact**. AA Middle = the k/4
+  sub-scanlines with exact coverage and `round(255·c/4)`: 438 of 649 edge pixels exact, the
+  rest +1 (CSP rounds those up; no simple rounding variant tried fits all).
+- **Polyline closing:** clicking the first corner closes the shape; so does a double-click on
+  the last corner.
+
+### Click without a drag
+- Rectangle sub tool, New mode: a click outside the selection **deselects**; a click inside
+  keeps it (it is a zero-length move).
+
+### Fill and Delete over existing pixels
+- Black layer, white fill in the AA ellipse E1 (`fill_white_over_black`, S = `S_E1`): colour =
+  S exactly on all 23 778 pixels, alpha stays 255.
+- A partly transparent backdrop (`del_backdrop`: Edit > Delete of a moved E1 on the black
+  layer; alpha = 255 − S exactly, and the moved selection is S_E1 shifted by exactly the drag
+  vector (200,150)), then a white fill in E3 (`fill_white_over_partial`, S = `S_E3`):
+  Brushye's Normal ink with stroke alpha S/255 gives 34 848 of 34 849 pixels exactly (one
+  pixel's alpha 134 vs 135).
+
+### Expand / Shrink
+- On the AA ellipse E1, width 5: square and rounded Expand, square and rounded Shrink are all
+  **grey-level max/min** over the square or the disk dx² + dy² < 36, exact (`eE1_*`).
+- Rounded Expand of the rectangle at w = 1, 2, 3, 25 (`rect_exp*_round`): w = 1 and 2 fit
+  d² < (w+1)² (they equal the square). **w = 3 gives the full square** (profile 3,3,3), and
+  w = 25 gives the per-row extents 25,25,25,25,25,25,24,24,24,23,23,22,22,21,21,20,19,18,17,
+  16,15,13,11,9,6, which match neither d² < 676 nor the AA-none circles of diameter 51/53
+  (`circles_none`). Rounded Shrink at w = 3 cuts a 3×3 corner (`rect_shr3_round`), consistent
+  with the square too. **Open:** the rounded kernel's shape.
+
+### Blur border
+- Select > Blur border…: one field, "Strength" (px, default 1.00). On the rectangle
+  (`rect_blur1/5/20`): strength 1 changes only the edge row (254); 5 gives a smooth edge
+  (…, 93 | 161, …) close to a Gaussian with σ ≈ 1.5; 20 a wider one (σ ≈ 6–7, not one
+  Gaussian). Open; not in Brushye.
+
+### Layer > Selection from Layer
+- Layer A = the AA ellipse E1 filled on Layer 1 (alpha = S_E1); selection B = an AA ellipse
+  (`B_sel`); readout on Layer 2 (`fromlayer_add/del/int`). Only one pixel has both values
+  partial (A = 90, B = 171): **Add Selection** 200, **Delete Selection** 110, **Select
+  Overlapping Area** 60. That fits products, floored: 255 − (255−A)(255−B)/255, B·(255−A)/255
+  and A·B/255, **not** the tool modes' saturating add/subtract (which give 255 and 81). Weak
+  (one pixel); not in Brushye.
+
 ## Open questions
-- Ellipse and lasso edge rasterization (binary and AA). The data is in `data/`; analysis only.
-- Rounded Expand/Shrink at other widths; Expand/Shrink of AA edges; Blur border.
-- Polyline, Shrink selection sub tool, Auto select, Select Color Gamut, Quick mask, selection
-  layers; Selection pen with anti-aliasing on (soft values under Add).
-- Layer > Selection from Layer > Add / Delete / Select Overlapping Area (whether they use the
-  same arithmetic as the tool modes).
+- Ellipse edge curve (AA and None); polygon AA rounding (+1 on a third of the edge pixels).
+- The rounded Expand/Shrink kernel beyond w = 1, 2, 10 (w = 3 is the square; w = 25 recorded).
+- Blur border (data recorded); Selection from Layer arithmetic (one pixel each).
+- Shrink selection sub tool, Auto select, Select Color Gamut, Quick mask, selection layers;
+  Selection pen with anti-aliasing on; modifier keys for the modes.

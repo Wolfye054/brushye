@@ -107,11 +107,21 @@ All results are bit-exact unless noted:
 - Opacity: `floor(f·o8/255)` (27 232 off), `(f·(o8+1))>>8` (2 949), and mask-then-opacity
   orders. Only opacity-then-mask with a floor is exact.
 
+## Run 4 (2026-11-14): Show Mask Area over transparency; PNG export colour
+- **Show Mask Area over partly transparent pixels** (base hidden, top_alpha with the standard
+  mask, screenshots with the setting off and on): the blue is laid over the **displayed**
+  pixel, **checkerboard included**. In the hidden band a white checker square becomes
+  (180,180,255) and a grey (204) one (144,144,219).
+  - Run 3's "C over white" was a sampling coincidence: its points lay on white checker
+    squares.
+  - The same formula, `(D·(255−w) + (0,0,255)·w + 127)/255` with D the displayed pixel, is
+    99.95 % exact on stable pixels here too.
+- **PNG export:** every one of the ~200 CSP exports in `specs/*/data` writes **(255,255,255)**
+  under alpha 0. Brushye's PNG export now does the same
+  (`brushye_format::png_io::export_png_bytes`).
+
 ## Open questions
-- Through-folder opacity at values other than 50 % (the weight `op·32768/100` is fitted at
-  50 % only).
-- Show Mask Area over partly transparent displayed pixels (fitted over opaque content and
-  over an empty canvas).
+- Through-folder opacity weight: answered in L-004 run 4, `(o8+1)·128`.
 - Mask expression > Show gradients other than Yes (threshold masks).
 - Painting a mask with partially transparent ink or lower brush opacity: expected to follow
   the brush's alpha output. Not run.

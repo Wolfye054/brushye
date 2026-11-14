@@ -82,6 +82,16 @@ A Through folder's opacity weight is **op·32768/100** (16384 at 50 %), not a15(
 - L-008 run 3, with a partly transparent child, fits only 16384.
 - With a mask, opacity and mask combine into one lerp weight, `(w_op · w_M) >> 15`.
 
+## Run 4 (2026-11-14): Through opacity at other values
+Method: automated-Wine (Xvfb :77). Data: `data/observed3/through_partial_op{1,37,99,100}.png`.
+Setup: base, then Through Folder [top_alpha Copy] (a partly transparent child) at 1, 37, 99
+and 100 %.
+- Solving each export for the single lerp weight from the backdrop to the 100 % result gives
+  one exact value per opacity: 1 % → 384, 37 % → 12160, 99 % → 32384 (and 50 % → 16384,
+  L-008 run 3).
+- All are **(o8 + 1) · 128** with o8 = floor(op·255/100), the same (o8+1) factor as layer
+  opacity (L-003). This replaces op·32768/100, which only agreed at 50 %.
+
 ## Open questions
 - Nested folders (rendering). The palette nests (U-014); compositing is expected to follow
   recursively. Not run.

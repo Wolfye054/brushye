@@ -42,6 +42,19 @@ pub fn png_bytes(img: &Image) -> Result<Vec<u8>, PngError> {
     Ok(v)
 }
 
+/// Encode an image the way CSP's File > Export (Single Layer) > .png writes it: fully
+/// transparent pixels carry colour (255,255,255). Every one of ~200 CSP 1.13.2 exports in the
+/// specs does this (L-008 run 4). Only the hidden colour bytes differ from [`png_bytes`].
+pub fn export_png_bytes(img: &Image) -> Result<Vec<u8>, PngError> {
+    let mut out = img.clone();
+    for p in out.px.as_chunks_mut::<4>().0 {
+        if p[3] == 0 {
+            *p = [255, 255, 255, 0];
+        }
+    }
+    png_bytes(&out)
+}
+
 /// Decode an 8-bit RGB/RGBA/Gray/GrayAlpha PNG to straight RGBA8. Colour-space chunks are
 /// ignored (values are taken as stored, like CSP's PNG open; spec D-002).
 pub fn read_png(data: &[u8]) -> Result<Image, PngError> {
@@ -105,5 +118,17 @@ mod tests {
         for chunk in [&b"iCCP"[..], b"gAMA", b"sRGB", b"cHRM"] {
             assert!(!a.windows(4).any(|w| w == chunk));
         }
+    }
+
+    #[test]
+    fn export_writes_white_under_transparent_pixels() {
+        let img = Image {
+            width: 2,
+            height: 1,
+            px: vec![10, 20, 30, 0, 10, 20, 30, 128],
+        };
+        let back = read_png(&export_png_bytes(&img).unwrap_or_else(|e| unreachable!("{e}")))
+            .unwrap_or_else(|e| unreachable!("{e}"));
+        assert_eq!(back.px, [255, 255, 255, 0, 10, 20, 30, 128]);
     }
 }

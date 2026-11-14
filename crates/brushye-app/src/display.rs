@@ -165,9 +165,10 @@ impl Display {
 }
 
 /// Show Mask Area (display only): where an enabled mask with the setting on hides, blue
-/// (0,0,255) is laid over the displayed pixel with weight `w = round(75·(255−M)/255)`, the
-/// pixel taken over white where the canvas is transparent. Observed in CSP 1.13.2 screenshots,
-/// 99.95 % exact on stable mask pixels (U-014 run 3).
+/// (0,0,255) is laid over the displayed pixel, checkerboard included, with weight
+/// `w = round(75·(255−M)/255)`. Fitted on CSP 1.13.2 screenshots, 99.95 % exact on stable mask
+/// pixels over opaque content and over an empty canvas (L-008 runs 3–4). The tile stays
+/// straight RGBA: blue is composited *over* it, so the GPU's checkerboard still shows through.
 fn show_mask_areas(
     doc: &Document,
     x0: u32,
@@ -187,11 +188,17 @@ fn show_mask_areas(
                 let w = (75 * (255 - v) + 127) / 255;
                 let i = ((y * img.width + x) * 4) as usize;
                 let a = u32::from(img.px[i + 3]);
-                for (c, blue) in [(0, 0u32), (1, 0), (2, 255)] {
-                    let over_white = (u32::from(img.px[i + c]) * a + 255 * (255 - a) + 127) / 255;
-                    img.px[i + c] = ((over_white * (255 - w) + blue * w + 127) / 255) as u8;
+                // Blue at alpha w over the straight pixel (C, a).
+                let oa = a + (w * (255 - a) + 127) / 255;
+                if oa == 0 {
+                    continue;
                 }
-                img.px[i + 3] = 255;
+                for (c, blue) in [(0, 0u32), (1, 0), (2, 255)] {
+                    let num = u32::from(img.px[i + c]) * a * (255 - w) + blue * w * 255;
+                    let den = oa * 255;
+                    img.px[i + c] = ((num + den / 2) / den) as u8;
+                }
+                img.px[i + 3] = oa as u8;
             }
         }
     }

@@ -528,7 +528,7 @@ impl App {
         self.exec(Command::LayerNew(commands::LayerNew {
             layer: LayerId(id),
             kind: None,
-            name: Some(format!("Layer {id}")),
+            name: Some(self.next_name("Layer")),
             above,
             into: into_folder,
             clip: clip.then_some(true),
@@ -554,6 +554,22 @@ impl App {
         self.can_edit_layer() && d.subtree(id).is_ok_and(|r| r.len() < d.layers().len())
     }
 
+    /// CSP names new layers and folders "<prefix> N" with the lowest N not in use
+    /// (U-014 run 3: with Layer 1 and Layer 7 present, the next is Layer 2).
+    fn next_name(&self, prefix: &str) -> String {
+        let used: std::collections::HashSet<u32> = self
+            .doc()
+            .map(|d| {
+                d.layers()
+                    .iter()
+                    .filter_map(|l| l.name.strip_prefix(prefix)?.strip_prefix(' ')?.parse().ok())
+                    .collect()
+            })
+            .unwrap_or_default();
+        let n = (1..).find(|n| !used.contains(n)).unwrap_or(1);
+        format!("{prefix} {n}")
+    }
+
     /// A layer inserted directly above `above` lands inside a clipping group when the layer
     /// that would then be above it is clipped; CSP clips it too (L-008 run 3).
     fn inside_clip_group(&self, above: Option<LayerId>) -> bool {
@@ -575,10 +591,13 @@ impl App {
         self.exec(Command::LayerNew(commands::LayerNew {
             layer: id,
             kind: Some(brushye_command::core::LayerKind::Folder),
-            name: Some(format!("Folder {}", id.0)),
+            name: Some(self.next_name("Folder")),
             above: self.session.active_layer(),
             into: None,
-            clip: None,
+            // Inside a clipping group a new folder is clipped too (L-008 run 4).
+            clip: self
+                .inside_clip_group(self.session.active_layer())
+                .then_some(true),
         }));
     }
 
@@ -586,10 +605,11 @@ impl App {
     pub(crate) fn group_active(&mut self) {
         if let Some(layer) = self.session.active_layer() {
             let folder = self.next_layer_id();
+            let name = Some(self.next_name("Folder"));
             self.exec(Command::LayerGroup(commands::LayerGroup {
                 folder,
                 layer,
-                name: None,
+                name,
             }));
         }
     }
@@ -1091,7 +1111,7 @@ impl App {
     pub(crate) fn export_png(&mut self, path: &str) {
         let Some(doc) = self.doc() else { return };
         let img = brushye_command::core::render::flatten(&doc);
-        let result = brushye_format::png_io::png_bytes(&img)
+        let result = brushye_format::png_io::export_png_bytes(&img)
             .map_err(|e| e.to_string())
             .and_then(|b| {
                 brsh::write_atomic(std::path::Path::new(path), &b).map_err(|e| e.to_string())

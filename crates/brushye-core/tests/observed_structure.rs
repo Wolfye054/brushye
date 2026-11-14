@@ -226,6 +226,22 @@ fn l004_folder_opacity_and_clipped_folders() {
     }
 }
 
+/// L-004 run 4: a Through folder [top_alpha] at 1, 37, 99 % (weight (o8+1)·128).
+#[test]
+fn l004_through_opacity_on_a_partial_child() {
+    let i = inputs();
+    for op in [1u8, 37, 99, 100] {
+        let mut d = doc_with_base(&i);
+        ok(d.add_layer(raster(2, &i.top_alpha), None));
+        ok(d.group(folder(4), LayerId(2)));
+        set(&mut d, 4, |l| {
+            l.blend = BlendMode::Through;
+            l.opacity = op;
+        });
+        exact(&d, &format!("observed3/through_partial_op{op}.png"));
+    }
+}
+
 /// Clip base in Multiply: CSP's output equals its own plain Multiply layer with the base's
 /// alpha (L-006 run 2), so the remaining error is L-002's open Multiply-with-partial-alpha
 /// rule: the same tolerance as there (max 2), and only on partially transparent pixels.

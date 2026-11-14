@@ -119,9 +119,15 @@ Same method. Document: base, top_alpha Copy and top Copy.
 - **Clipped folder:** the clip bar is drawn at the left of the folder row, before the arrow.
   Through on a clipped folder is shown in **red** (L-004 run 3).
 
+### Run 3 (2026-11-14): names, folders in clipping groups
+- **New names** take the **lowest unused number**. With "Layer 1" and "Layer 7" present
+  (Layer 2 renamed to Layer 7 by Layer Settings > Change Layer Name…), New Raster Layer makes
+  "Layer 2". Deleting it and making another gives "Layer 2" again. Folders count separately
+  ("Folder N").
+- **New Layer Folder inside a clipping group** (the clip base selected, a clipped layer
+  above) makes a **clipped** folder, as New Raster Layer does (L-008 run 3).
+
 ## Open questions
-- How CSP numbers new layer and folder names ("Folder 1", "Folder 2": a per-kind counter, the
-  highest number + 1, or something else). Brushye names them by layer id for now.
 - Which layer is selected after deleting the bottom layer, or a layer whose lower neighbour
   is inside a collapsed folder.
 - Ungroup of a folder whose mask hides something: is the mask applied first, or discarded?

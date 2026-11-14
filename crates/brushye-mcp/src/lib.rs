@@ -532,7 +532,7 @@ pub trait Host {
                 check_keys(args, &["path", "layer"])?;
                 let path = req_str(args, "path")?;
                 let img = image(self.session(), str_arg(args, "layer")?)?;
-                let bytes = png_io::png_bytes(&img).map_err(|e| e.to_string())?;
+                let bytes = png_io::export_png_bytes(&img).map_err(|e| e.to_string())?;
                 std::fs::write(path, bytes).map_err(|e| format!("{path}: {e}"))?;
                 Ok(vec![Out::Text(format!(
                     "exported {path} ({}x{} px)",

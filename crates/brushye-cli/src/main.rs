@@ -71,7 +71,7 @@ fn read_input(path: &str) -> Result<String, String> {
 /// Flatten a document and write it as PNG.
 fn export_png(doc: &Document, out: &str) -> Result<(), Fail> {
     let img = brushye_command::core::render::flatten(doc);
-    let bytes = png_io::png_bytes(&img).map_err(|e| Fail::Run(e.to_string()))?;
+    let bytes = png_io::export_png_bytes(&img).map_err(|e| Fail::Run(e.to_string()))?;
     std::fs::write(out, bytes).map_err(|e| Fail::Run(format!("{out}: {e}")))
 }
 

@@ -161,11 +161,12 @@ fn children<'a>(doc: &'a Document, folder: &Layer) -> Vec<&'a Layer> {
 }
 
 /// A Through folder's opacity and mask: one lerp from the backdrop before the folder to the
-/// result, `w = (w_op · w_M) >> 15` with `w_op = op·32768/100` and `w_M = floor(M·32768/255)`
-/// (32768 without a mask). Observed exact at 50 % with and without a mask (L-004 runs 1–3,
-/// L-008 run 3); other opacities are open.
+/// result, `w = (w_op · w_M) >> 15` with `w_op = (o8 + 1) · 128`, `o8 = floor(op·255/100)`, and
+/// `w_M = floor(M·32768/255)` (32768 without a mask). Observed exact at 1, 37, 50, 99 and
+/// 100 % (L-004 runs 1–4) and with a mask at 50 % (L-008 run 3).
 fn through_lerp(before: &[u8], px: &mut [u8], r: &Rect, opacity: u8, mask: Option<&Mask>) {
-    let wo = u32::from(opacity.min(100)) * 32768 / 100;
+    let o8 = u32::from(opacity.min(100)) * 255 / 100;
+    let wo = (o8 + 1) << 7;
     for y in r.y0..r.y1 {
         for x in r.x0..r.x1 {
             let wm = mask.map_or(32768, |m| {

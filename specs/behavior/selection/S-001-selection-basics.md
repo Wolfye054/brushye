@@ -198,8 +198,36 @@ Same setup; data in `data/run3/`. Readouts as before (Edit > Fill on an empty la
   and A·B/255, **not** the tool modes' saturating add/subtract (which give 255 and 81). Weak
   (one pixel); not in Brushye.
 
+## Run 4 (2026-11-14, pen display :78): the ellipse curve
+- 52 drags in one selection (`data/run4/`, boxes in `boxes.txt`, canvas coordinates
+  `x0 y0 x1 y1`): circles of diameter 1–40 on a 50 px grid, and ellipses 12×5, 5×12, 20×7,
+  7×20, 30×9, 9×30, 41×13, 64×21, 80×33, 100×7, 7×100, 150×40; AA None (`ell_none`) and AA
+  Middle (`ell_aa`). The 1×1 and 2×2 drags selected nothing (too small, or the drag was too
+  short to register) and the 150×40 drag was lost; the other 49 fill exactly their boxes.
+- **AA None is not a threshold of the AA result** (≥ 268 pixels differ at any threshold), and
+  not the pixel-centre test of the true ellipse (exact up to d = 8; d = 9 has rows 3,7,7,9…
+  where the centre test gives 5,7,9…; 178 pixels over all shapes).
+- Inscribed polygons with evenly spaced vertices reproduce most AA None shapes one at a time,
+  but the vertex count that fits varies with size (≈ 8 for d ≤ 9, 20–36 for d ≈ 20–40, none
+  for 64×21). Four cubic Bézier arcs flattened into n equal-t segments fit best at n = 8–9
+  (98 pixels off over all shapes), not exactly.
+- **AA:** the k/4 sub-scanlines are confirmed. A sub-scanline that only grazes the top of the
+  ellipse leaves the centre pixels at **192 = 3 × 64**, so a full sub-scanline seems to count
+  64 (sum clipped at 255) rather than 63.75. The values sit **2–7 below** the true ellipse's
+  coverage even on the 3×3 to 6×6 circles (3×3: 109 192 109 / 245 255 245 / 166 255 166 against
+  111 191 111 / 247 255 247 / 170 255 170), more in rows away from the box's middle. A
+  Bézier circle with a smaller control-point factor (≈ 0.54 instead of 0.5523) reduces the
+  largest error to 9–25 for d ≤ 40, but no combination tried (kappa, polygon count and phase,
+  horizontal inset 0–0.15 px, per-sub-scanline or summed quantization at 64 or 63.75) is
+  exact: about 200 of the edge pixels of the 3–12 px circles stay off.
+- **Status: open.** Brushye keeps the true ellipse with k/4 sub-scanlines (within a few
+  levels on small ellipses, up to ≈ 66 on large ones). A further pass needs a different
+  probe, e.g. selections exported at several zoom levels, or the selection outline
+  (Edit > Outline selection) to see the curve itself.
+
 ## Open questions
-- Ellipse edge curve (AA and None); polygon AA rounding (+1 on a third of the edge pixels).
+- Ellipse edge curve (AA and None; run 4 data and the fits that failed); polygon AA rounding
+  (+1 on a third of the edge pixels).
 - The rounded Expand/Shrink kernel beyond w = 1, 2, 10 (w = 3 is the square; w = 25 recorded).
 - Blur border (data recorded); Selection from Layer arithmetic (one pixel each).
 - Shrink selection sub tool, Auto select, Select Color Gamut, Quick mask, selection layers;

@@ -216,6 +216,10 @@ pub struct Document {
     pub paper: Option<Rgba8>,
     /// Layers from bottom to top.
     layers: Vec<Arc<Layer>>,
+    /// The selection (D-024); `None` = nothing selected.
+    pub selection: Option<crate::selection::Selection>,
+    /// The selection before the last Deselect, for Reselect (D-024).
+    pub last_selection: Option<crate::selection::Selection>,
 }
 
 impl Document {
@@ -229,6 +233,8 @@ impl Document {
             dpi,
             paper,
             layers: Vec::new(),
+            selection: None,
+            last_selection: None,
         })
     }
 
@@ -516,6 +522,19 @@ impl Document {
             h.u32(u32::try_from(l.tiles.len()).unwrap_or(u32::MAX));
             for ((tx, ty), t) in l.tiles.iter() {
                 h.i32(*tx).i32(*ty).bytes(&t.px);
+            }
+        }
+        // D-024: the selections join the hash only when present.
+        for (tag, s) in [
+            (&b"selection"[..], &self.selection),
+            (&b"last_selection"[..], &self.last_selection),
+        ] {
+            if let Some(s) = s {
+                h.bytes(tag).bytes(&[s.background]);
+                h.u32(u32::try_from(s.tile_count()).unwrap_or(u32::MAX));
+                for ((tx, ty), t) in s.tiles() {
+                    h.i32(*tx).i32(*ty).bytes(&t.v);
+                }
             }
         }
         h.finish()

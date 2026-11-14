@@ -638,6 +638,7 @@ mod roundtrip {
                                 brushye_core::input::canonical(&samples).unwrap_or_default(),
                             ),
                             target: None,
+                            mode: None,
                         })
                     }
                 ),

@@ -1,0 +1,20 @@
+# Selections (D-024, S-001): shapes and modes, fills, clipped strokes, masks from a selection.
+# Run: brushye run examples/scripts/selections.bcmd --png out.png
+doc.new 400 300
+layer.new L1 name="Paint"
+# An ellipse, plus a rectangle (Add), minus a small hole (Subtract).
+select.ellipse x=40 y=40 w=200 h=160
+select.rect x=180 y=120 w=180 h=120 mode=add
+select.rect x=120 y=100 w=30 h=30 mode=subtract
+?selection
+# Fill the selection, then paint a stroke that stays inside it.
+edit.fill L1 color=#e8b04a
+brush.stroke L1 color=#7a2e1f size=40 samples=[0,150,1,0;400,150,1,400000]
+# Grow it and keep only the outside as a mask on a new layer.
+select.expand w=8 shape=round
+layer.new L2 name="Outside"
+layer.fill L2 color=#2a4a6a
+mask.new L2 fill=selection
+# Deselect; Reselect would bring it back.
+select.none
+?selection

@@ -34,12 +34,21 @@ impl MaskTile {
     }
 }
 
-/// A layer's or folder's mask.
+/// A sparse 8-bit value grid: 256×256 one-byte tiles, `Arc`-shared between document versions
+/// (D-013); pixels without a stored tile have the `background` value. Layer masks (D-023) and
+/// the selection (D-024) both use it.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Mask {
+pub struct Grid8 {
     /// Value of every pixel without a stored tile.
     pub background: u8,
     tiles: BTreeMap<TileCoord, Arc<MaskTile>>,
+}
+
+/// A layer's or folder's mask: its values plus the mask settings. The values are reached
+/// through `Deref` to [`Grid8`].
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Mask {
+    pub grid: Grid8,
     /// Enable Mask: a disabled mask is ignored when rendering (L-008).
     pub enabled: bool,
     /// Link Mask to Layer (moves with the layer; no transform tools yet).
@@ -49,15 +58,42 @@ pub struct Mask {
     pub show_area: bool,
 }
 
+impl std::ops::Deref for Mask {
+    type Target = Grid8;
+    fn deref(&self) -> &Grid8 {
+        &self.grid
+    }
+}
+
+impl std::ops::DerefMut for Mask {
+    fn deref_mut(&mut self) -> &mut Grid8 {
+        &mut self.grid
+    }
+}
+
 impl Mask {
     /// A new mask, every pixel `background`; enabled and linked, area not shown (U-014).
     pub fn new(background: u8) -> Self {
         Self {
-            background,
-            tiles: BTreeMap::new(),
+            grid: Grid8::new(background),
             enabled: true,
             linked: true,
             show_area: false,
+        }
+    }
+
+    /// Pixel alpha with this mask applied: `floor(a · M / 255)` (L-008).
+    pub fn apply(a: u8, m: u8) -> u8 {
+        ((u32::from(a) * u32::from(m)) / 255) as u8
+    }
+}
+
+impl Grid8 {
+    /// Every pixel `background`, no tiles stored.
+    pub fn new(background: u8) -> Self {
+        Self {
+            background,
+            tiles: BTreeMap::new(),
         }
     }
 
@@ -145,11 +181,6 @@ impl Mask {
             }
         }
         self.prune();
-    }
-
-    /// Pixel alpha with this mask applied: `floor(a · M / 255)` (L-008).
-    pub fn apply(a: u8, m: u8) -> u8 {
-        ((u32::from(a) * u32::from(m)) / 255) as u8
     }
 }
 

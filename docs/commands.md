@@ -108,7 +108,8 @@ Paint one brush stroke from input samples.
 | `density_pressure` | u8 | optional `key=` | Pen pressure controls density; minimum in percent |
 | `density_curve` | curve points [x,y;…] | optional `key=` | Density pressure curve points [x,y;…] |
 | `samples` | stroke samples | required `key=` | Input samples (b64:… or [x,y,p,t;…]) |
-| `target` | target (layer\|mask) | optional `key=` | Paint the layer's pixels (default) or its mask |
+| `target` | target (layer\|mask\|selection) | optional `key=` | Paint the layer's pixels (default), its mask, or the selection (Selection pen; the layer is untouched) |
+| `mode` | selection mode (new\|add\|subtract\|intersect) | optional `key=` | With target=selection: how the stroke combines with the selection (default add; Erase selection = subtract) |
 
 ### `layer.group` (v1, undoable)
 Put a layer in a new folder (Ctrl+G).
@@ -132,7 +133,7 @@ Create a layer mask (Create layer mask).
 | Parameter | Kind | Form | Description |
 |---|---|---|---|
 | `layer` | layer id | positional | Layer or folder |
-| `fill` | mask fill (reveal\|hide) | optional `key=` | reveal (default, the palette button) or hide |
+| `fill` | mask fill (reveal\|hide\|selection\|outside) | optional `key=` | reveal (default, the palette button), hide, selection (Mask Selection: hides the selected area, M = 255 − S) or outside (Mask Outside Selection: M = S) |
 
 ### `mask.delete` (v1, undoable)
 Delete a layer's mask.
@@ -158,6 +159,98 @@ Enable, link or show the area of a mask.
 | `linked` | bool | optional `key=` | Link Mask to Layer |
 | `show_area` | bool | optional `key=` | Show Mask Area |
 
+### `select.rect` (v1, undoable)
+Select a rectangle.
+
+| Parameter | Kind | Form | Description |
+|---|---|---|---|
+| `x` | i64 | required `key=` | Left edge in canvas pixels |
+| `y` | i64 | required `key=` | Top edge in canvas pixels |
+| `w` | u32 | required `key=` | Width |
+| `h` | u32 | required `key=` | Height |
+| `mode` | selection mode (new\|add\|subtract\|intersect) | optional `key=` | new (default), add, subtract or intersect |
+
+### `select.ellipse` (v1, undoable)
+Select an ellipse.
+
+| Parameter | Kind | Form | Description |
+|---|---|---|---|
+| `x` | f64 | required `key=` | Box left edge in canvas pixels |
+| `y` | f64 | required `key=` | Box top edge in canvas pixels |
+| `w` | f64 | required `key=` | Box width |
+| `h` | f64 | required `key=` | Box height |
+| `aa` | anti-aliasing (none\|weak\|middle\|strong) | optional `key=` | Anti-aliasing (default middle; weak, middle and strong are identical, S-001) |
+| `mode` | selection mode (new\|add\|subtract\|intersect) | optional `key=` | new (default), add, subtract or intersect |
+
+### `select.polygon` (v1, undoable)
+Select a polygon (lasso, polyline).
+
+| Parameter | Kind | Form | Description |
+|---|---|---|---|
+| `points` | points [x,y;…] | required `key=` | Corners [x,y;…] in canvas pixels; the last joins the first |
+| `aa` | anti-aliasing (none\|weak\|middle\|strong) | optional `key=` | Anti-aliasing (default middle) |
+| `mode` | selection mode (new\|add\|subtract\|intersect) | optional `key=` | new (default), add, subtract or intersect |
+
+### `select.all` (v1, undoable)
+Select All.
+
+No parameters.
+
+### `select.none` (v1, undoable)
+Deselect.
+
+No parameters.
+
+### `select.reselect` (v1, undoable)
+Reselect the last deselected selection.
+
+No parameters.
+
+### `select.invert` (v1, undoable)
+Invert selected area.
+
+No parameters.
+
+### `select.expand` (v1, undoable)
+Expand selected area.
+
+| Parameter | Kind | Form | Description |
+|---|---|---|---|
+| `w` | u32 | required `key=` | Expansion width in px |
+| `shape` | shape (square\|round) | optional `key=` | square (default) or round |
+
+### `select.shrink` (v1, undoable)
+Shrink selected area.
+
+| Parameter | Kind | Form | Description |
+|---|---|---|---|
+| `w` | u32 | required `key=` | Shrinking width in px |
+| `shape` | shape (square\|round) | optional `key=` | square (default) or round |
+| `canvas_edge` | bool | optional `key=` | Shrink at edge of canvas (default true) |
+
+### `select.move` (v1, undoable)
+Move the selection.
+
+| Parameter | Kind | Form | Description |
+|---|---|---|---|
+| `dx` | i64 | required `key=` | Horizontal offset in px |
+| `dy` | i64 | required `key=` | Vertical offset in px |
+
+### `edit.fill` (v1, undoable)
+Fill the selection (or layer) with a colour.
+
+| Parameter | Kind | Form | Description |
+|---|---|---|---|
+| `layer` | layer id | positional | Raster layer |
+| `color` | colour | required `key=` | Colour #rrggbb |
+
+### `edit.delete` (v1, undoable)
+Clear the selection (or layer).
+
+| Parameter | Kind | Form | Description |
+|---|---|---|---|
+| `layer` | layer id | positional | Raster layer |
+
 ### `layer.show` (v1, appstate)
 Show or hide a layer (not undoable, as in CSP).
 
@@ -180,7 +273,7 @@ Make a layer the active layer.
 | Parameter | Kind | Form | Description |
 |---|---|---|---|
 | `layer` | layer id | positional | Layer to select |
-| `target` | target (layer\|mask) | optional `key=` | Paint the layer (default) or its mask |
+| `target` | target (layer\|mask\|selection) | optional `key=` | Paint the layer (default) or its mask |
 
 ### `input.pressure_curve` (v1, appstate)
 Set the global pen pressure adjustment curve.
@@ -402,6 +495,19 @@ A layer's mask value at x, y.
 | Parameter | Kind | Form | Description |
 |---|---|---|---|
 | `layer` | layer id | positional | Layer or folder |
+| `x` | u32 | required `key=` | x |
+| `y` | u32 | required `key=` | y |
+
+### `?selection`
+Whether something is selected, its bounds, and Reselect.
+
+No parameters.
+
+### `?selection.pixel`
+The selection value at x, y.
+
+| Parameter | Kind | Form | Description |
+|---|---|---|---|
 | `x` | u32 | required `key=` | x |
 | `y` | u32 | required `key=` | y |
 

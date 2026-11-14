@@ -482,6 +482,40 @@ mod golden {
         assert_eq!(hash(&mut r), "9551df11dea2a9d5");
     }
 
+    /// Format 4 (D-024): a selection (rectangle + polygon − hole) and a Reselect selection
+    /// (the ellipse a stroke was clipped to).
+    #[test]
+    fn golden_v4_document_opens_and_replays() {
+        let l = brsh::load(&data("golden_v4.brsh"), true).unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(l.file_version, 4);
+        assert_eq!(format!("{:016x}", l.doc.content_hash()), "93ed9bb6677be39d");
+        let s = l
+            .doc
+            .selection
+            .as_ref()
+            .unwrap_or_else(|| panic!("selection"));
+        assert_eq!(
+            (s.value(160, 30), s.value(210, 70), s.value(60, 170)),
+            (255, 0, 255)
+        );
+        let last = l
+            .doc
+            .last_selection
+            .as_ref()
+            .unwrap_or_else(|| panic!("last"));
+        assert_eq!((last.value(100, 75), last.value(10, 10)), (255, 0));
+        let mut r =
+            Session::replay(&l.journal.unwrap_or_default()).unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(hash(&mut r), "93ed9bb6677be39d");
+    }
+
+    /// Older files gain no selection when migrated to v4.
+    #[test]
+    fn v3_files_have_no_selection() {
+        let l = brsh::load(&data("golden_v3.brsh"), true).unwrap_or_else(|e| panic!("{e}"));
+        assert!(l.doc.selection.is_none() && l.doc.last_selection.is_none());
+    }
+
     #[test]
     fn golden_v1_brush_opens() {
         let (b, w) =

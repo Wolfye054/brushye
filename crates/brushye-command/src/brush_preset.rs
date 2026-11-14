@@ -93,6 +93,7 @@ impl BrushPreset {
             density_curve: self.density_curve.clone(),
             samples,
             target: None,
+            mode: None,
         }
     }
 

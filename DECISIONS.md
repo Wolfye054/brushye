@@ -708,8 +708,15 @@ crates/
     unlike CSP's model.
   - New command versions for each extension: unnecessary while old meanings are unchanged.
 - **No new dependencies.**
+- **Implementation notes (2026-11-14):** `Grid8` (the sparse grid, split out of `Mask`) holds
+  both; `brushye_core::selection` has the shapes, modes, Invert, Expand/Shrink and Move.
+  Strokes are clipped as observed (S-001 run 2). The Selection pen and Erase selection are
+  `brush.stroke … target=selection mode=add|subtract` (the stroke's alpha combined by the
+  mode), so they replay with the full input stream like every stroke. Queries:
+  `?selection`, `?selection.pixel`. Edit > Fill over existing pixels lays the colour on like
+  Normal ink with alpha S (not observed yet).
 
-## D-024 Selections: storage, commands, file format — ACCEPTED (2026-11-14)
+## D-024 Selections: storage, commands, file format — ACCEPTED (2026-11-14), IMPLEMENTED
 - **Date:** proposed 2026-11-14 (M10, after S-001/U-016); accepted by the maintainer the same day.
 - **Scope:** behaviour follows CSP 1.13.2 from observation: S-001 and U-016 so far, more runs
   for the open items. This entry covers only how Brushye stores and addresses a selection.

@@ -13,12 +13,13 @@
 
 use std::sync::Arc;
 
-use brushye_core::brush::{BrushSettings, Curve};
+use brushye_core::brush::{Aa, BrushSettings, Curve, InkMode, ink};
 use brushye_core::document::DocError;
-use brushye_core::{BlendMode, Document, Layer, LayerId, LayerKind, Rgba8};
+use brushye_core::selection::{self as sel, SelectMode, Shape};
+use brushye_core::{BlendMode, Document, Grid8, Layer, LayerId, LayerKind, Rgba8, TILE_SIZE};
 use serde_json::{Value as Json, json};
 
-use crate::commands::{self, Class, Command, MaskFill, Paper, Place, Query, Target};
+use crate::commands::{self, Class, Command, MaskFill, MorphShape, Paper, Place, Query, Target};
 use crate::params::{Arg, value_text};
 use crate::syntax::{Line, RawLine, parse_line, print_line};
 
@@ -515,6 +516,19 @@ impl Session {
                     .ok_or_else(|| ExecError(format!("{} has no mask", p.layer)))?;
                 json!(m.value(p.x, p.y))
             }
+            Query::Selection(_) => {
+                let d = self.doc()?;
+                json!({
+                    "selected": d.selection.is_some(),
+                    "bounds": d.selection.as_ref().and_then(|s| s.bounds(d.width, d.height)),
+                    "can_reselect": d.last_selection.is_some(),
+                })
+            }
+            Query::SelectionPixel(p) => {
+                let d = self.doc()?;
+                in_canvas(d, p.x, p.y)?;
+                json!(d.selection.as_ref().map_or(0, |s| s.value(p.x, p.y)))
+            }
             Query::LayerPixel(p) => {
                 let d = self.doc()?;
                 in_canvas(d, p.x, p.y)?;
@@ -790,15 +804,27 @@ fn edit(d: &mut Document, cmd: &Command, pressure_curve: &Curve) -> Result<(), E
         }
         Command::LayerUngroup(p) => d.ungroup(p.folder)?,
         Command::MaskNew(p) => {
+            let bounds = (d.width, d.height);
+            let sel = d.selection.clone();
+            let sel = sel.as_ref();
             let l = d.layer_mut(p.layer)?;
             if l.mask.is_some() {
                 return Err(ExecError(format!("{} already has a mask", p.layer)));
             }
-            let bg = match p.fill.unwrap_or(MaskFill::Reveal) {
-                MaskFill::Reveal => 255,
-                MaskFill::Hide => 0,
-            };
-            l.mask = Some(brushye_core::Mask::new(bg));
+            let mut mask = brushye_core::Mask::new(match p.fill.unwrap_or(MaskFill::Reveal) {
+                MaskFill::Reveal | MaskFill::Selection => 255,
+                MaskFill::Hide | MaskFill::Outside => 0,
+            });
+            // From a selection (S-001): Mask Outside Selection gives M = S, Mask Selection
+            // hides the selected area, M = 255 − S. Without a selection S is 0 everywhere.
+            if let (Some(s), Some(f @ (MaskFill::Selection | MaskFill::Outside))) = (sel, p.fill) {
+                let mut v = s.to_dense(bounds.0, bounds.1);
+                if f == MaskFill::Selection {
+                    sel::invert(&mut v);
+                }
+                mask.grid = Grid8::from_dense(bounds.0, bounds.1, &v);
+            }
+            l.mask = Some(mask);
         }
         Command::MaskDelete(p) => {
             let l = d.layer_mut(p.layer)?;
@@ -936,9 +962,35 @@ fn edit(d: &mut Document, cmd: &Command, pressure_curve: &Curve) -> Result<(), E
                 .collect();
             write_pixels(d, p.layer, 0, 0, w, h, &block)?;
         }
+        Command::BrushStroke(p) if p.target == Some(Target::Selection) => {
+            // Selection pen / Erase selection (S-001 run 2): the stroke's alpha, combined with
+            // the selection by the mode. The layer is not touched.
+            let settings = brush_settings(p, pressure_curve)?;
+            let (w, h) = (d.width, d.height);
+            d.layer(p.layer).ok_or(DocError::NoSuchLayer(p.layer))?;
+            let mut tmp = Layer::new(LayerId(0), "selection", LayerKind::Raster);
+            brushye_core::brush::stroke(&mut tmp, (w, h), &settings, &p.samples.0)
+                .map_err(|e| ExecError(e.to_string()))?;
+            let mut b = vec![0u8; w as usize * h as usize];
+            for y in 0..h {
+                for x in 0..w {
+                    b[(y * w + x) as usize] = tmp.pixel(x, y)[3];
+                }
+            }
+            let cur = d.selection.as_ref().map(|s| s.to_dense(w, h));
+            let v = sel::combine(p.mode.unwrap_or(SelectMode::Add), cur.as_deref(), &b);
+            set_selection(d, v);
+        }
         Command::BrushStroke(p) => {
+            if p.mode.is_some() {
+                return Err(ExecError(
+                    "brush.stroke: mode=… is for target=selection".into(),
+                ));
+            }
             let settings = brush_settings(p, pressure_curve)?;
             let bounds = (d.width, d.height);
+            // Strokes are clipped to the selection (S-001 run 2).
+            let clip = d.selection.clone();
             let l = d.layer_mut(p.layer)?;
             if l.locked {
                 return Err(DocError::LayerLocked(p.layer).into());
@@ -951,15 +1003,161 @@ fn edit(d: &mut Document, cmd: &Command, pressure_curve: &Curve) -> Result<(), E
                     .as_mut()
                     .ok_or_else(|| ExecError(format!("{} has no mask", p.layer)))?;
                 let mut tmp = m.to_layer(bounds);
-                brushye_core::brush::stroke(&mut tmp, bounds, &settings, &p.samples.0)
-                    .map_err(|e| ExecError(e.to_string()))?;
+                brushye_core::brush::stroke_clipped(
+                    &mut tmp,
+                    bounds,
+                    &settings,
+                    &p.samples.0,
+                    clip.as_ref(),
+                )
+                .map_err(|e| ExecError(e.to_string()))?;
                 m.set_from_layer(&tmp, bounds);
             } else {
                 if l.is_folder() {
                     return Err(ExecError(format!("{}: can't paint on a folder", p.layer)));
                 }
-                brushye_core::brush::stroke(l, bounds, &settings, &p.samples.0)
-                    .map_err(|e| ExecError(e.to_string()))?;
+                brushye_core::brush::stroke_clipped(
+                    l,
+                    bounds,
+                    &settings,
+                    &p.samples.0,
+                    clip.as_ref(),
+                )
+                .map_err(|e| ExecError(e.to_string()))?;
+            }
+        }
+        Command::SelectRect(p) => select_shape(
+            d,
+            p.mode,
+            &Shape::Rect {
+                x: p.x,
+                y: p.y,
+                w: p.w,
+                h: p.h,
+            },
+        ),
+        Command::SelectEllipse(p) => select_shape(
+            d,
+            p.mode,
+            &Shape::Ellipse {
+                x: p.x,
+                y: p.y,
+                w: p.w,
+                h: p.h,
+                aa: p.aa != Some(Aa::None),
+            },
+        ),
+        Command::SelectPolygon(p) => {
+            if p.points.0.len() < 3 {
+                return Err(ExecError("select.polygon needs at least 3 points".into()));
+            }
+            select_shape(
+                d,
+                p.mode,
+                &Shape::Polygon {
+                    points: p.points.0.clone(),
+                    aa: p.aa != Some(Aa::None),
+                },
+            );
+        }
+        Command::SelectAll(_) => d.selection = Some(Grid8::new(255)),
+        Command::SelectNone(_) => {
+            let s = d.selection.take().ok_or_else(nothing_selected)?;
+            d.last_selection = Some(s);
+        }
+        Command::SelectReselect(_) => {
+            d.selection = Some(
+                d.last_selection
+                    .clone()
+                    .ok_or_else(|| ExecError("no selection to reselect".into()))?,
+            );
+        }
+        Command::SelectInvert(_) => {
+            let mut v = current_selection(d)?;
+            sel::invert(&mut v);
+            set_selection(d, v);
+        }
+        Command::SelectExpand(p) => {
+            let v = current_selection(d)?;
+            let round = p.shape == Some(MorphShape::Round);
+            let v = sel::morph(&v, d.width, d.height, p.w, round, true, 0);
+            set_selection(d, v);
+        }
+        Command::SelectShrink(p) => {
+            let v = current_selection(d)?;
+            let round = p.shape == Some(MorphShape::Round);
+            let edge = if p.canvas_edge.unwrap_or(true) {
+                0
+            } else {
+                255
+            };
+            let v = sel::morph(&v, d.width, d.height, p.w, round, false, edge);
+            set_selection(d, v);
+        }
+        Command::SelectMove(p) => {
+            let v = current_selection(d)?;
+            let v = sel::shift(&v, d.width, d.height, p.dx, p.dy);
+            set_selection(d, v);
+        }
+        Command::EditFill(p) => {
+            if p.color.0[3] != 255 {
+                return Err(ExecError(
+                    "edit.fill: color must be opaque (#rrggbb)".into(),
+                ));
+            }
+            let (w, h) = (d.width, d.height);
+            let s = d.selection.as_ref().map(|s| s.to_dense(w, h));
+            let l = raster_target(d, p.layer)?;
+            let rgb = [p.color.0[0], p.color.0[1], p.color.0[2]];
+            // The selection value is the fill's alpha, laid on like ink (S-001: alpha = S on
+            // an empty layer). Over existing pixels: open.
+            for y in 0..h {
+                for x in 0..w {
+                    let v = s.as_ref().map_or(255, |s| s[(y * w + x) as usize]);
+                    if v == 0 {
+                        continue;
+                    }
+                    let dst = l.pixel(x, y);
+                    let out = ink::apply(
+                        InkMode::Normal,
+                        dst,
+                        rgb,
+                        f64::from(v) / 255.0,
+                        l.lock_alpha,
+                    );
+                    if out != dst {
+                        put_pixel(l, x, y, out);
+                    }
+                }
+            }
+            l.tiles.prune();
+        }
+        Command::EditDelete(p) => {
+            let (w, h) = (d.width, d.height);
+            let s = d.selection.as_ref().map(|s| s.to_dense(w, h));
+            let l = raster_target(d, p.layer)?;
+            match s {
+                None => l.tiles = Default::default(),
+                Some(s) => {
+                    // alpha → floor(a·(255 − S)/255) (S-001: 255 − S on an opaque layer).
+                    let coords: Vec<_> = l.tiles.iter().map(|(c, _)| *c).collect();
+                    let ts = TILE_SIZE as u32;
+                    for (tx, ty) in coords {
+                        let t = l.tiles.get_mut((tx, ty));
+                        for (i, px) in t.px.as_chunks_mut::<4>().0.iter_mut().enumerate() {
+                            let x = tx as u32 * ts + (i as u32 % ts);
+                            let y = ty as u32 * ts + (i as u32 / ts);
+                            if x < w && y < h {
+                                let v = s[(y * w + x) as usize];
+                                px[3] = brushye_core::Mask::apply(px[3], 255 - v);
+                                if px[3] == 0 {
+                                    *px = [0; 4];
+                                }
+                            }
+                        }
+                    }
+                    l.tiles.prune();
+                }
             }
         }
         Command::LayerPixels(p) => {
@@ -980,6 +1178,57 @@ fn edit(d: &mut Document, cmd: &Command, pressure_curve: &Curve) -> Result<(), E
         }
     }
     Ok(())
+}
+
+fn nothing_selected() -> ExecError {
+    ExecError("nothing is selected".into())
+}
+
+/// The current selection as a dense canvas buffer.
+fn current_selection(d: &Document) -> Result<Vec<u8>, ExecError> {
+    d.selection
+        .as_ref()
+        .map(|s| s.to_dense(d.width, d.height))
+        .ok_or_else(nothing_selected)
+}
+
+/// Store a selection result; all zero means nothing is selected.
+fn set_selection(d: &mut Document, v: Vec<u8>) {
+    d.selection = v
+        .iter()
+        .any(|&p| p != 0)
+        .then(|| Grid8::from_dense(d.width, d.height, &v));
+}
+
+/// A shape combined with the current selection by the selection mode (S-001 run 2).
+fn select_shape(d: &mut Document, mode: Option<SelectMode>, shape: &Shape) {
+    let (w, h) = (d.width, d.height);
+    let b = sel::rasterize(shape, w, h);
+    let mode = mode.unwrap_or_default();
+    let cur = match mode {
+        SelectMode::New => None,
+        _ => d.selection.as_ref().map(|s| s.to_dense(w, h)),
+    };
+    set_selection(d, sel::combine(mode, cur.as_deref(), &b));
+}
+
+/// A raster layer that edits may change.
+fn raster_target(d: &mut Document, id: LayerId) -> Result<&mut Layer, ExecError> {
+    let l = d.layer_mut(id)?;
+    if l.locked {
+        return Err(DocError::LayerLocked(id).into());
+    }
+    if l.is_folder() {
+        return Err(ExecError(format!("{id} is a folder")));
+    }
+    Ok(l)
+}
+
+fn put_pixel(l: &mut Layer, x: u32, y: u32, px: [u8; 4]) {
+    let ts = TILE_SIZE as u32;
+    let t = l.tiles.get_mut(((x / ts) as i32, (y / ts) as i32));
+    let i = (((y % ts) * ts + x % ts) * 4) as usize;
+    t.px[i..i + 4].copy_from_slice(&px);
 }
 
 /// Brush settings of a `brush.stroke` command (validated by the engine).

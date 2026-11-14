@@ -18,3 +18,4 @@ or send its text to the MCP server's `run` tool (`docs/mcp.md`). A test runs eve
 | `layers-and-blending.bcmd` | layers, fills, raw pixels, blending modes and opacity, queries |
 | `strokes-and-undo.bcmd` | brush strokes from readable pen samples, pressure, undo and redo |
 | `subtools.bcmd` | tool state as commands: adding and tuning a sub tool, colours |
+| `selections.bcmd` | selections: shapes and modes, Fill, a clipped stroke, Expand, a mask from a selection |

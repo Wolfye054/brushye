@@ -18,10 +18,11 @@ pub mod input;
 pub mod mask;
 pub mod render;
 pub mod rng;
+pub mod selection;
 pub mod tile;
 
 pub use blend::BlendMode;
 pub use document::{Document, Layer, LayerKind, Rgba8};
 pub use ids::LayerId;
-pub use mask::Mask;
+pub use mask::{Grid8, Mask};
 pub use tile::{TILE_SIZE, Tile, TileGrid};

@@ -781,3 +781,64 @@ impl Arg for Samples {
         text_value(s).and_then(|v| Self::from_value(&v))
     }
 }
+
+word_arg!(
+    brushye_core::selection::SelectMode,
+    "selection mode (new|add|subtract|intersect)"
+);
+
+/// Polygon points in canvas pixels: a matrix `[x,y;x,y;…]` (JSON: `[[x,y],…]`).
+#[derive(Clone, Debug, PartialEq)]
+pub struct Points(pub Vec<[f64; 2]>);
+
+impl Arg for Points {
+    const KIND: &'static str = "points [x,y;…]";
+    fn from_value(v: &Value) -> Result<Self, String> {
+        let Value::Matrix(rows) = v else {
+            return Err(want("points [x,y;…]", v));
+        };
+        let mut pts = Vec::with_capacity(rows.len());
+        for (i, r) in rows.iter().enumerate() {
+            let [x, y] = r.as_slice() else {
+                return Err(format!("point {i} needs exactly x,y"));
+            };
+            let num = |s: &String| f64::from_value(&Value::Num(s.clone()));
+            pts.push([num(x)?, num(y)?]);
+        }
+        Ok(Points(pts))
+    }
+    fn to_value(&self) -> Value {
+        Value::Matrix(
+            self.0
+                .iter()
+                .map(|p| {
+                    p.iter()
+                        .map(|v| match v.to_value() {
+                            Value::Num(s) => s,
+                            _ => String::new(),
+                        })
+                        .collect()
+                })
+                .collect(),
+        )
+    }
+    fn to_json(&self) -> Json {
+        Json::Array(
+            self.0
+                .iter()
+                .map(|p| Json::Array(vec![p[0].to_json(), p[1].to_json()]))
+                .collect(),
+        )
+    }
+    fn from_json(j: &Json) -> Result<Self, String> {
+        let rows = j.as_array().ok_or("expected [[x,y],…] in JSON")?;
+        let mut pts = Vec::with_capacity(rows.len());
+        for r in rows {
+            match r.as_array().map(Vec::as_slice) {
+                Some([x, y]) => pts.push([f64::from_json(x)?, f64::from_json(y)?]),
+                _ => return Err("each point must be [x,y]".into()),
+            }
+        }
+        Ok(Points(pts))
+    }
+}

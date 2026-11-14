@@ -1,5 +1,6 @@
 # S-001 Selections: shapes, edit operations, use by Fill / Delete / masks, History
-- Status: **observed** (shapes, Invert, Expand/Shrink, Fill, Delete, mask from selection: exact;
+- Status: **implemented** (D-024, 2026-11-14: everything marked exact; the ellipse/polygon
+  edge rule is an approximation until fitted) / **observed** (shapes, Invert, Expand/Shrink, Fill, Delete, mask from selection: exact;
   selection modes, painting inside a selection, Selection pen / Erase selection: exact (run 2);
   ellipse/lasso edge rasterization: data recorded, model open)
 - CSP version: 1.13.2 (PRO, 64-bit, build 202301210208)
@@ -91,8 +92,11 @@ every 8 ms (`tools/observe` vpen fifo; script `move`/`wait` lines as in `pen_gri
   values reproduce Brushye's current Normal composite). The two alpha 237/238 values are 19/18
   where L-003's layer composite gives 18/17; Brushye's brush engine already gives 18 for the
   unselected stroke, so the selection only scales the stroke alpha.
-- Rule: **the stroke's alpha at a pixel is multiplied by S with a floor, then the stroke merges
-  into the layer as usual**, the same rule as layer masks (L-008).
+- Rule: **the stroke's unquantised alpha a (opacity × stroke buffer, B-003) is multiplied by
+  S/255, then the stroke merges into the layer as usual.** With a = 0.93 this reproduces all 33
+  observed values: the 19 alphas on the empty layer (= floor(238·S/255) there) and the 14
+  colours over white. Brushye: `brush::stroke_clipped`; `crates/brushye-core/tests/
+  observed_selection.rs` checks 24 edge pixels bit-exact.
 
 ### Selection modes (Selection area tool, Tool property "Selection mode")
 The four buttons are New, Add, Subtract and Intersect. In Add/Subtract/Intersect, dragging

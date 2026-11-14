@@ -6,9 +6,10 @@ use brushye_core::{BlendMode, LayerId, LayerKind, Rgba8};
 use serde_json::{Value as Json, json};
 
 use crate::params;
-use crate::params::{Arg, Blob, JsonReader, Mode, ParamSpec, Reader, Samples};
+use crate::params::{Arg, Blob, JsonReader, Mode, ParamSpec, Points, Reader, Samples};
 use crate::syntax::{RawLine, Value};
 use crate::tools::{Chip, Tool};
+use brushye_core::selection::SelectMode;
 
 /// How a command interacts with history (D-013, spec H-001).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -92,12 +93,18 @@ macro_rules! word_enum {
 
 word_enum!(
     /// What a stroke paints, or what is selected for painting: the layer's pixels or its mask.
-    Target, "target (layer|mask)", { Layer = "layer", Mask = "mask" }
+    Target, "target (layer|mask|selection)", { Layer = "layer", Mask = "mask", Selection = "selection" }
 );
 word_enum!(
     /// A new mask's initial content (U-014: the palette button reveals all; Mask Outside
     /// Selection with no selection hides all).
-    MaskFill, "mask fill (reveal|hide)", { Reveal = "reveal", Hide = "hide" }
+    MaskFill, "mask fill (reveal|hide|selection|outside)", {
+        Reveal = "reveal", Hide = "hide", Selection = "selection", Outside = "outside"
+    }
+);
+word_enum!(
+    /// Expand / Shrink selected area type (U-016).
+    MorphShape, "shape (square|round)", { Square = "square", Round = "round" }
 );
 
 /// `top` or `bottom` of the layer stack.
@@ -252,7 +259,7 @@ params! {
     /// Create layer mask: a new mask that reveals or hides everything (L-008, U-014).
     pub struct MaskNew {
         layer: LayerId = pos "Layer or folder",
-        fill: Option<MaskFill> = opt "reveal (default, the palette button) or hide",
+        fill: Option<MaskFill> = opt "reveal (default, the palette button), hide, selection (Mask Selection: hides the selected area, M = 255 − S) or outside (Mask Outside Selection: M = S)",
     }
 }
 params! {
@@ -304,7 +311,101 @@ params! {
         density_pressure: Option<u8> = opt "Pen pressure controls density; minimum in percent",
         density_curve: Option<Curve> = opt "Density pressure curve points [x,y;…]",
         samples: Samples = key "Input samples (b64:… or [x,y,p,t;…])",
-        target: Option<Target> = opt "Paint the layer's pixels (default) or its mask",
+        target: Option<Target> = opt "Paint the layer's pixels (default), its mask, or the selection (Selection pen; the layer is untouched)",
+        mode: Option<SelectMode> = opt "With target=selection: how the stroke combines with the selection (default add; Erase selection = subtract)",
+    }
+}
+params! {
+    /// Select a rectangle: the integer box [x, x+w) × [y, y+h) (S-001).
+    pub struct SelectRect {
+        x: i64 = key "Left edge in canvas pixels",
+        y: i64 = key "Top edge in canvas pixels",
+        w: u32 = key "Width",
+        h: u32 = key "Height",
+        mode: Option<SelectMode> = opt "new (default), add, subtract or intersect",
+    }
+}
+params! {
+    /// Select the ellipse that fills a box.
+    pub struct SelectEllipse {
+        x: f64 = key "Box left edge in canvas pixels",
+        y: f64 = key "Box top edge in canvas pixels",
+        w: f64 = key "Box width",
+        h: f64 = key "Box height",
+        aa: Option<Aa> = opt "Anti-aliasing (default middle; weak, middle and strong are identical, S-001)",
+        mode: Option<SelectMode> = opt "new (default), add, subtract or intersect",
+    }
+}
+params! {
+    /// Select a closed polygon (Lasso, Polyline).
+    pub struct SelectPolygon {
+        points: Points = key "Corners [x,y;…] in canvas pixels; the last joins the first",
+        aa: Option<Aa> = opt "Anti-aliasing (default middle)",
+        mode: Option<SelectMode> = opt "new (default), add, subtract or intersect",
+    }
+}
+params! {
+    /// Select All.
+    pub struct SelectAll {}
+}
+params! {
+    /// Deselect (keeps the selection for Reselect).
+    pub struct SelectNone {}
+}
+params! {
+    /// Reselect: bring back the selection from before the last Deselect.
+    pub struct SelectReselect {}
+}
+params! {
+    /// Invert selected area: S → 255 − S.
+    pub struct SelectInvert {}
+}
+params! {
+    /// Expand selected area (S-001).
+    pub struct SelectExpand {
+        w: u32 = key "Expansion width in px",
+        shape: Option<MorphShape> = opt "square (default) or round",
+    }
+}
+params! {
+    /// Shrink selected area (S-001).
+    pub struct SelectShrink {
+        w: u32 = key "Shrinking width in px",
+        shape: Option<MorphShape> = opt "square (default) or round",
+        canvas_edge: Option<bool> = opt "Shrink at edge of canvas (default true)",
+    }
+}
+params! {
+    /// Move the selection (dragging inside it, S-001).
+    pub struct SelectMove {
+        dx: i64 = key "Horizontal offset in px",
+        dy: i64 = key "Vertical offset in px",
+    }
+}
+params! {
+    /// Edit > Fill: fill the selection (or the whole layer) with a colour; alpha = S on an
+    /// empty layer (S-001).
+    pub struct EditFill {
+        layer: LayerId = pos "Raster layer",
+        color: Rgba8 = key "Colour #rrggbb",
+    }
+}
+params! {
+    /// Edit > Delete: clear the selection (or the whole layer); alpha becomes
+    /// floor(a·(255 − S)/255) (S-001).
+    pub struct EditDelete {
+        layer: LayerId = pos "Raster layer",
+    }
+}
+params! {
+    /// The selection: whether there is one, its bounding box and Reselect availability.
+    pub struct QSelection {}
+}
+params! {
+    /// The selection value at canvas coordinates (0 = not selected, 255 = selected).
+    pub struct QSelectionPixel {
+        x: u32 = key "x",
+        y: u32 = key "y",
     }
 }
 params! {
@@ -670,6 +771,18 @@ registry! {
         MaskDelete(MaskDelete) = "mask.delete" v 1 Undoable "Delete a layer's mask",
         MaskApply(MaskApply) = "mask.apply" v 1 Undoable "Apply a mask to its layer's pixels",
         MaskSet(MaskSet) = "mask.set" v 1 Undoable "Enable, link or show the area of a mask",
+        SelectRect(SelectRect) = "select.rect" v 1 Undoable "Select a rectangle",
+        SelectEllipse(SelectEllipse) = "select.ellipse" v 1 Undoable "Select an ellipse",
+        SelectPolygon(SelectPolygon) = "select.polygon" v 1 Undoable "Select a polygon (lasso, polyline)",
+        SelectAll(SelectAll) = "select.all" v 1 Undoable "Select All",
+        SelectNone(SelectNone) = "select.none" v 1 Undoable "Deselect",
+        SelectReselect(SelectReselect) = "select.reselect" v 1 Undoable "Reselect the last deselected selection",
+        SelectInvert(SelectInvert) = "select.invert" v 1 Undoable "Invert selected area",
+        SelectExpand(SelectExpand) = "select.expand" v 1 Undoable "Expand selected area",
+        SelectShrink(SelectShrink) = "select.shrink" v 1 Undoable "Shrink selected area",
+        SelectMove(SelectMove) = "select.move" v 1 Undoable "Move the selection",
+        EditFill(EditFill) = "edit.fill" v 1 Undoable "Fill the selection (or layer) with a colour",
+        EditDelete(EditDelete) = "edit.delete" v 1 Undoable "Clear the selection (or layer)",
         LayerShow(LayerShow) = "layer.show" v 1 AppState "Show or hide a layer (not undoable, as in CSP)",
         LayerExpand(LayerExpand) = "layer.expand" v 1 AppState "Open or close a folder in the Layer palette",
         LayerSelect(LayerSelect) = "layer.select" v 1 AppState "Make a layer the active layer",
@@ -700,6 +813,8 @@ registry! {
         Pixel(QPixel) = "pixel" "Rendered pixel at x, y (RGBA)",
         LayerPixel(QLayerPixel) = "layer.pixel" "A layer's own pixel at x, y (RGBA)",
         MaskPixel(QMaskPixel) = "layer.mask_pixel" "A layer's mask value at x, y",
+        Selection(QSelection) = "selection" "Whether something is selected, its bounds, and Reselect",
+        SelectionPixel(QSelectionPixel) = "selection.pixel" "The selection value at x, y",
         History(QHistory) = "history" "Undo history: step labels and current position",
         InputPressureCurve(QInputPressureCurve) = "input.pressure_curve" "The global pen pressure curve's control points",
         Tools(QTools) = "tools" "The current tool and every tool's sub tools",

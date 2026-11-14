@@ -30,6 +30,7 @@ use std::collections::BTreeMap;
 
 use crate::document::Layer;
 use crate::input::Sample;
+use crate::mask::Grid8;
 
 pub use curve::{Curve, CurveError};
 pub use ink::InkMode;
@@ -451,6 +452,14 @@ fn dab_into(
     }
 }
 
+/// Stroke alpha `a` at (x, y) inside a selection: `a · S / 255` (S-001 run 2).
+fn clip_alpha(clip: Option<&Grid8>, x: u32, y: u32, a: f64) -> f64 {
+    match clip {
+        None => a,
+        Some(s) => a * f64::from(s.value(x, y)) / 255.0,
+    }
+}
+
 /// The stroke buffer (B-003): built up by the dabs of one stroke, committed at the end.
 pub struct StrokeBuffer {
     bounds: (u32, u32),
@@ -489,8 +498,24 @@ impl StrokeBuffer {
     /// Composite the stroke onto a layer (straight RGBA8) with an ink mode, honouring lock
     /// transparency.
     pub fn commit(&self, layer: &mut Layer, color: [u8; 3], mode: InkMode) {
+        self.commit_clipped(layer, color, mode, None);
+    }
+
+    /// [`StrokeBuffer::commit`] inside a selection: the unquantised stroke alpha is
+    /// multiplied by S/255 before the ink mode (S-001 run 2, exact on 33 observed values).
+    pub fn commit_clipped(
+        &self,
+        layer: &mut Layer,
+        color: [u8; 3],
+        mode: InkMode,
+        clip: Option<&Grid8>,
+    ) {
         use crate::tile::TILE_SIZE;
         for (x, y, a) in self.alphas() {
+            let a = clip_alpha(clip, x, y, a);
+            if a <= 0.0 {
+                continue;
+            }
             let (tx, ty) = (
                 (x as usize / TILE_SIZE) as i32,
                 (y as usize / TILE_SIZE) as i32,
@@ -525,6 +550,8 @@ pub struct LiveStroke {
     buf: StrokeBuffer,
     applied: usize,
     tail_chunks: Vec<ChunkKey>,
+    /// The selection the stroke is clipped to.
+    clip: Option<Grid8>,
 }
 
 impl LiveStroke {
@@ -539,7 +566,14 @@ impl LiveStroke {
             buf: StrokeBuffer::new(bounds),
             applied: 0,
             tail_chunks: Vec::new(),
+            clip: None,
         })
+    }
+
+    /// Clip the stroke to a selection (set before the first [`LiveStroke::push`]).
+    pub fn with_clip(mut self, clip: Option<Grid8>) -> Self {
+        self.clip = clip;
+        self
     }
 
     pub fn settings(&self) -> &BrushSettings {
@@ -591,6 +625,7 @@ impl LiveStroke {
                 self.bounds,
                 key,
                 chunk.map(|c| &**c),
+                self.clip.as_ref(),
             );
         }
         self.preview.tiles.prune();
@@ -611,6 +646,7 @@ fn recommit(
     bounds: (u32, u32),
     key: ChunkKey,
     chunk: Option<&Chunk>,
+    clip: Option<&Grid8>,
 ) {
     {
         use crate::tile::TILE_SIZE;
@@ -632,6 +668,7 @@ fn recommit(
                     let i = iy * CHUNK + ix;
                     ch.o[i] * (1.0 - ch.t[i])
                 });
+                let a = clip_alpha(clip, x as u32, y as u32, a);
                 let out = if a > 0.0 {
                     ink::apply(s.ink, base, s.color, a, base_layer.lock_alpha)
                 } else {
@@ -655,6 +692,17 @@ pub fn stroke(
     s: &BrushSettings,
     samples: &[Sample],
 ) -> Result<(), BrushError> {
+    stroke_clipped(layer, bounds, s, samples, None)
+}
+
+/// [`stroke`] clipped to a selection (S-001 run 2).
+pub fn stroke_clipped(
+    layer: &mut Layer,
+    bounds: (u32, u32),
+    s: &BrushSettings,
+    samples: &[Sample],
+    clip: Option<&Grid8>,
+) -> Result<(), BrushError> {
     s.validate()?;
     if samples.is_empty() {
         return Err(BrushError("a stroke needs at least one sample".into()));
@@ -663,7 +711,7 @@ pub fn stroke(
     for d in place_dabs(s, samples) {
         buf.dab(s, &d);
     }
-    buf.commit(layer, s.color, s.ink);
+    buf.commit_clipped(layer, s.color, s.ink, clip);
     Ok(())
 }
 

@@ -28,7 +28,7 @@ use zip::{CompressionMethod, DateTime, ZipArchive, ZipWriter};
 use crate::png_io;
 
 /// Current `.brsh` format version.
-pub const FORMAT_VERSION: u32 = 3;
+pub const FORMAT_VERSION: u32 = 4;
 /// Format id in `manifest.json`.
 pub const FORMAT_ID: &str = "brushye-document";
 /// zstd level for tiles: fast saves (D-014).
@@ -165,6 +165,8 @@ pub fn document_json(doc: &Document, active: Option<LayerId>) -> Json {
                 "show_area": m.show_area,
             })),
         })).collect::<Vec<_>>(),
+        "selection": doc.selection.as_ref().map(|s| json!({ "background": s.background })),
+        "last_selection": doc.last_selection.as_ref().map(|s| json!({ "background": s.background })),
     })
 }
 
@@ -265,15 +267,15 @@ pub fn save(
             )?;
         }
         if let Some(m) = &l.mask {
-            for (&(tx, ty), t) in m.tiles() {
-                let bytes = zstd::bulk::compress(&t.v, ZSTD_LEVEL).map_err(err)?;
-                put(
-                    &mut zw,
-                    &format!("{dir}/mask/{tx}_{ty}.zst"),
-                    stored,
-                    &bytes,
-                )?;
-            }
+            put_grid(&mut zw, &format!("{dir}/mask"), m)?;
+        }
+    }
+    for (dir, s) in [
+        ("selection", &doc.selection),
+        ("last_selection", &doc.last_selection),
+    ] {
+        if let Some(s) = s {
+            put_grid(&mut zw, dir, s)?;
         }
     }
     let img = flatten(doc);
@@ -285,6 +287,83 @@ pub fn save(
         put(&mut zw, "journal.bcmd", deflated, j.as_bytes())?;
     }
     Ok(zw.finish().map_err(err)?.into_inner())
+}
+
+/// Store a [`Grid8`]'s tiles as `<dir>/<tx>_<ty>.zst` (zstd, stored in the zip).
+fn put_grid(
+    zw: &mut ZipWriter<Cursor<Vec<u8>>>,
+    dir: &str,
+    g: &brushye_core::Grid8,
+) -> Result<(), BrshError> {
+    let stored = SimpleFileOptions::default()
+        .compression_method(CompressionMethod::Stored)
+        .last_modified_time(DateTime::default())
+        .unix_permissions(0o644);
+    for (&(tx, ty), t) in g.tiles() {
+        let bytes = zstd::bulk::compress(&t.v, ZSTD_LEVEL).map_err(err)?;
+        zw.start_file(format!("{dir}/{tx}_{ty}.zst"), stored)
+            .map_err(err)?;
+        zw.write_all(&bytes).map_err(err)?;
+    }
+    Ok(())
+}
+
+/// Read the tiles under `<dir>/` into `g`, marking them known.
+fn read_grid(
+    e: &Entries,
+    dir: &str,
+    tiles: (i32, i32),
+    g: &mut brushye_core::Grid8,
+    known: &mut Vec<String>,
+) -> Result<(), BrshError> {
+    let prefix = format!("{dir}/");
+    for (name, data) in e.range(prefix.clone()..) {
+        let Some(rest) = name.strip_prefix(&prefix) else {
+            break;
+        };
+        let Some((tx, ty)) = rest
+            .strip_suffix(".zst")
+            .and_then(|c| c.split_once('_'))
+            .and_then(|(a, b)| Some((a.parse::<i32>().ok()?, b.parse::<i32>().ok()?)))
+        else {
+            continue; // reported as unknown
+        };
+        if !(0..tiles.0).contains(&tx) || !(0..tiles.1).contains(&ty) {
+            return Err(err(format!("{name}: tile outside the canvas")));
+        }
+        let v = zstd::bulk::decompress(data, TILE_SIZE * TILE_SIZE)
+            .map_err(|x| err(format!("{name}: {x}")))?;
+        if v.len() != TILE_SIZE * TILE_SIZE {
+            return Err(err(format!(
+                "{name}: tile has {} bytes, expected {}",
+                v.len(),
+                TILE_SIZE * TILE_SIZE
+            )));
+        }
+        g.put_tile((tx, ty), v.into_boxed_slice());
+        known.push(name.clone());
+    }
+    g.prune();
+    Ok(())
+}
+
+/// A grid's `{ "background": n }` object, or null.
+fn grid_json(
+    j: Option<&Json>,
+    what: &str,
+    warnings: &mut Vec<String>,
+) -> Result<Option<brushye_core::Grid8>, BrshError> {
+    match j {
+        None | Some(Json::Null) => Ok(None),
+        Some(Json::Object(m)) => {
+            let mut f = Fields::new(what.to_owned(), m);
+            let bg = f.u32("background")?;
+            let bg = u8::try_from(bg).map_err(|_| err(format!("{what}: background {bg}")))?;
+            f.unknown(warnings);
+            Ok(Some(brushye_core::Grid8::new(bg)))
+        }
+        Some(_) => Err(err(format!("{what} must be an object or null"))),
+    }
 }
 
 /// Write `bytes` to `path` crash-safely: a temporary file in the same folder, flushed to
@@ -334,7 +413,27 @@ pub type Entries = BTreeMap<String, Vec<u8>>;
 pub type Migration = (u32, fn(&mut Entries) -> Result<(), String>);
 
 /// All format migrations.
-pub const MIGRATIONS: &[Migration] = &[(1, migrate_v1_to_v2), (2, migrate_v2_to_v3)];
+pub const MIGRATIONS: &[Migration] = &[
+    (1, migrate_v1_to_v2),
+    (2, migrate_v2_to_v3),
+    (3, migrate_v3_to_v4),
+];
+
+/// v3 → v4 (D-024): the document gains `selection` and `last_selection` (null).
+fn migrate_v3_to_v4(e: &mut Entries) -> Result<(), String> {
+    let raw = e.get("document.json").ok_or("missing document.json")?;
+    let mut doc: Json = serde_json::from_slice(raw).map_err(|x| x.to_string())?;
+    let m = doc
+        .as_object_mut()
+        .ok_or("document.json is not an object")?;
+    m.insert("selection".into(), Json::Null);
+    m.insert("last_selection".into(), Json::Null);
+    e.insert(
+        "document.json".into(),
+        serde_json::to_vec(&doc).map_err(|x| x.to_string())?,
+    );
+    Ok(())
+}
 
 /// v2 → v3 (D-023, L-008): layers gain `mask` (null).
 fn migrate_v2_to_v3(e: &mut Entries) -> Result<(), String> {
@@ -567,6 +666,10 @@ pub fn load(bytes: &[u8], strict: bool) -> Result<Loaded, BrshError> {
         .req("layers")?
         .as_array()
         .ok_or_else(|| err("document.json: \"layers\" must be an array"))?;
+    let sel_json = (
+        df.get("selection").cloned(),
+        df.get("last_selection").cloned(),
+    );
     df.unknown(&mut warnings);
 
     let mut doc = Document::new(width, height, dpi, paper).map_err(err)?;
@@ -626,34 +729,13 @@ pub fn load(bytes: &[u8], strict: bool) -> Result<Loaded, BrshError> {
             m.linked = mf.bool("linked")?;
             m.show_area = mf.bool("show_area")?;
             mf.unknown(&mut warnings);
-            let prefix = format!("{}/mask/", layer_dir(id));
-            for (name, data) in e.range(prefix.clone()..) {
-                let Some(rest) = name.strip_prefix(&prefix) else {
-                    break;
-                };
-                let Some((tx, ty)) = rest
-                    .strip_suffix(".zst")
-                    .and_then(|c| c.split_once('_'))
-                    .and_then(|(a, b)| Some((a.parse::<i32>().ok()?, b.parse::<i32>().ok()?)))
-                else {
-                    continue; // reported as unknown below
-                };
-                if !(0..tiles_x).contains(&tx) || !(0..tiles_y).contains(&ty) {
-                    return Err(err(format!("{name}: mask tile outside the canvas")));
-                }
-                let v = zstd::bulk::decompress(data, TILE_SIZE * TILE_SIZE)
-                    .map_err(|x| err(format!("{name}: {x}")))?;
-                if v.len() != TILE_SIZE * TILE_SIZE {
-                    return Err(err(format!(
-                        "{name}: mask tile has {} bytes, expected {}",
-                        v.len(),
-                        TILE_SIZE * TILE_SIZE
-                    )));
-                }
-                m.put_tile((tx, ty), v.into_boxed_slice());
-                known.push(name.clone());
-            }
-            m.prune();
+            read_grid(
+                &e,
+                &format!("{}/mask", layer_dir(id)),
+                (tiles_x, tiles_y),
+                &mut m,
+                &mut known,
+            )?;
             layer.mask = Some(m);
         }
 
@@ -702,6 +784,17 @@ pub fn load(bytes: &[u8], strict: bool) -> Result<Loaded, BrshError> {
         doc.push_layer_raw(layer).map_err(err)?;
     }
     doc.check_structure().map_err(err)?;
+    for (j, dir) in [(&sel_json.0, "selection"), (&sel_json.1, "last_selection")] {
+        if let Some(mut g) = grid_json(j.as_ref(), &format!("document.json {dir}"), &mut warnings)?
+        {
+            read_grid(&e, dir, (tiles_x, tiles_y), &mut g, &mut known)?;
+            if dir == "selection" {
+                doc.selection = Some(g);
+            } else {
+                doc.last_selection = Some(g);
+            }
+        }
+    }
     if let Some(a) = active
         && doc.layer(a).is_none()
     {

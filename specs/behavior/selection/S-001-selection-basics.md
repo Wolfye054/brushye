@@ -225,10 +225,31 @@ Same setup; data in `data/run3/`. Readouts as before (Edit > Fill on an empty la
   probe, e.g. selections exported at several zoom levels, or the selection outline
   (Edit > Outline selection) to see the curve itself.
 
+## Run 5 (2026-11-14, pen display :78): the rounded Expand/Shrink kernel
+- **Seed:** a drag of 1×1 or 3×3 px selects nothing (CSP treats it as a click), so the seed is
+  a 21×21 rectangle shrunk by 10 (square): exactly one pixel, (400, 400). Then Select > Expand
+  selected area…, Rounded, width w, and the readout: the result is the kernel itself.
+  Widths 1–30, 35, 40, 50, 60, 80, 100 (`data/run5/rounded_kernels.json`: per width, the
+  half-width of rows dy = 0..w; images `k_14`, `k_25`, `k_100`).
+- Every kernel is binary, symmetric in x, y and the diagonal, never wider than w in either
+  axis, and exactly described by its row half-widths. **It is not a Euclidean disk:** the
+  squared-radius ranges consistent with the data are irregular (e.g. w = 11: r ∈ (12.04,
+  12.08]; w = 13: (13.89, 13.93]) and w = 14 and 16 fit no disk at all (w = 14 contains
+  (12, 9), d² = 225, but not a point with d² = 221). Widths 1–3 are the full square.
+  Midpoint-circle variants, regular polygons (centre test), offset squares and CSP's own
+  selection circles (run 4) were tried; none reproduces all widths. The construction is
+  **open**.
+- **Rounded Shrink erodes by the same kernel:** a 300×300 rectangle (`r300`) shrunk by 14 and
+  by 16 (`s_14`, `s_16`) equals erosion by the measured kernels, exact.
+- Brushye uses the measured kernels for those widths (exact; tests reproduce k_14, k_25,
+  k_100, s_14, s_16 and run 3's w = 3 and 25) and the disk `dx² + dy² < (w+1)²` for other
+  widths (exact at several measured widths, within a pixel per row at the others).
+
 ## Open questions
 - Ellipse edge curve (AA and None; run 4 data and the fits that failed); polygon AA rounding
   (+1 on a third of the edge pixels).
-- The rounded Expand/Shrink kernel beyond w = 1, 2, 10 (w = 3 is the square; w = 25 recorded).
+- The rounded kernel's construction (measured for 36 widths, run 5; unmeasured widths use a
+  disk approximation).
 - Blur border (data recorded); Selection from Layer arithmetic (one pixel each).
 - Shrink selection sub tool, Auto select, Select Color Gamut, Quick mask, selection layers;
   Selection pen with anti-aliasing on; modifier keys for the modes.

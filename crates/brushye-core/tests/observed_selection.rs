@@ -221,8 +221,8 @@ fn morphology_on_soft_edges() {
             "{name}"
         );
     }
-    // Rounded expansion of the rectangle: the disk rule holds at w = 1 and 2 (open at 3, 25).
-    for w in [1, 2] {
+    // Rounded expansion of the rectangle, with the measured kernels (run 5).
+    for w in [1, 2, 3, 25] {
         let e = morph(&rect(), W, H, w, true, true, 0);
         assert_eq!(
             mismatches(&e, &alpha3(&format!("rect_exp{w}_round"))),
@@ -264,5 +264,22 @@ fn fill_over_existing_pixels() {
             }
         }
         assert!(bad <= limit, "{sel}: {bad}");
+    }
+}
+
+/// S-001 run 5: rounded Expand of a single pixel is the kernel itself; rounded Shrink erodes by
+/// the same kernel.
+#[test]
+fn rounded_kernels() {
+    let mut seed = vec![0u8; (W * H) as usize];
+    seed[(400 * W + 400) as usize] = 255;
+    for w in [14, 25, 100] {
+        let got = morph(&seed, W, H, w, true, true, 0);
+        assert_eq!(mismatches(&got, &alpha(&format!("run5/k_{w}"))), 0, "w={w}");
+    }
+    let r = alpha("run5/r300");
+    for w in [14, 16] {
+        let got = morph(&r, W, H, w, true, false, 0);
+        assert_eq!(mismatches(&got, &alpha(&format!("run5/s_{w}"))), 0, "w={w}");
     }
 }

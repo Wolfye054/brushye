@@ -116,3 +116,11 @@ Rules learned the hard way:
 
 - Stop helper processes by PID (`ps -eo pid,comm,args`), never with `pkill -f`/`pgrep -f` on a
   pattern that also appears in your own shell's command line: it kills that shell.
+- Fill observations (F-001): check a layer's visibility from the eye icon's pixels before
+  clicking (`max > 120` = shown), never toggle blindly; a lost click otherwise leaves the
+  reference layer hidden and the fill floods the canvas. A lost fill click also makes the
+  following Edit > Undo remove the previous step (e.g. the new layer).
+- The ▸ at the end of the Close gap bar opens a pop-up; clicks after it can toggle other rows
+  (Refer multiple got unchecked). Screenshot-check Tool property rows after any change.
+- Open PNG inputs with File > Open and a Windows path (`Z:\...`, backslashes); slashes are
+  rejected as invalid characters.

@@ -1,5 +1,5 @@
 # L-008 Layer masks: values, alpha, opacity
-- Status: **observed** (raster-layer masks: exact; folder masks: see L-004 run 2)
+- Status: **implemented** (M10, 2026-11-14; open items below) / **observed** (raster-layer masks: exact; folder masks: see L-004 run 2)
 - CSP version: 1.13.2 (PRO, 64-bit, build 202301210208)
 - Needs: automated-Wine OK
 - Date / method / observer: 2026-11-14 / automated-Wine (Xvfb :77, XTEST mouse drags) / Claude

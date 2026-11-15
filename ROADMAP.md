@@ -99,7 +99,9 @@ attach mode. Report: `docs/reports/M9-mcp-server.md`.
   D-022); script examples; journal viewer (CLI and app window).
 
 ## M10 — Post-alpha painting features
-**Part 1 (in progress, D-023 accepted):** layer structure 1:1 with CSP.
+Report for parts 1–2: `docs/reports/M10-layers-and-selections.md`.
+
+**Part 1 (done 2026-11-14, D-023):** layer structure 1:1 with CSP.
 - Observed (2026-11-14): L-008 masks, U-014 palette, H-002 history, L-004/L-006 run 2.
 - Done: folders, Through, clipping in the core, renderer (every observed export bit-exact),
   commands, `.brsh` v2 and the Layer palette.
@@ -110,9 +112,12 @@ attach mode. Report: `docs/reports/M9-mcp-server.md`.
   colour mixing (Blend/Running/Smear), texture, spray, dual brush, starting/ending,
   watercolor edge, PSD import/export, workspace/shortcut customization.
 
-**Part 2 (started 2026-11-14): selections.** Observed S-001, U-016; storage decision D-024
-(accepted). Open observation: ellipse/lasso edge rasterization (analysis), painting inside a
-selection (virtual pen), selection modes, Polyline, Selection pen/eraser, Auto select.
+**Part 2 (done 2026-11-15): selections** (D-024; S-001 runs 1–6, U-016): shapes and modes,
+edits, Blur border, Selection from Layer, clipped strokes, selection pen, `.brsh` v4, the
+Selection area tool, ants and Launcher. Open: the ellipse edge curve, the rounded kernel's
+construction (measured widths are exact).
+
+**Part 3 (proposed):** Fill tool and Auto select (shared flood fill; observation first).
 
 ## M11 — .clip import
 - Container/structure study from maintainer samples; raster layers, folders, blend modes,

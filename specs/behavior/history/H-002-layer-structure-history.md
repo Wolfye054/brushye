@@ -1,5 +1,5 @@
 # H-002 History steps for folders, clipping and layer masks
-- Status: **observed**
+- Status: **implemented** (M10, 2026-11-14; open items below) / **observed**
 - CSP version: 1.13.2 (PRO, 64-bit, build 202301210208)
 - Needs: automated-Wine OK
 - Date / method / observer: 2026-11-14 / automated-Wine (Xvfb :77, XTEST) / Claude

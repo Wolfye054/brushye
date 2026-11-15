@@ -1,5 +1,5 @@
 # U-014 Layer palette: folders, clipping and layer masks
-- Status: **observed** (screen layout from screenshots; the mask-area colour sampled from a
+- Status: **implemented** (M10, 2026-11-14; open items below) / **observed** (screen layout from screenshots; the mask-area colour sampled from a
   screenshot, which is display-only)
 - CSP version: 1.13.2 (PRO, 64-bit, build 202301210208)
 - Needs: automated-Wine OK

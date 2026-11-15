@@ -1,5 +1,5 @@
 # L-004 Layer folders: Normal vs Through (pass-through), folder opacity
-- Status: **observed** (run 2, 2026-11-14: several children, child opacity, folder masks; run 3: folder opacity on partial alpha, clipped folders)
+- Status: **implemented** (M10, 2026-11-14; open items below) / **observed** (run 2, 2026-11-14: several children, child opacity, folder masks; run 3: folder opacity on partial alpha, clipped folders)
 - CSP version: 1.13.2 (PRO, 64-bit, build 202301210208)
 - Needs: automated-Wine OK
 - Date / method / observer: 2026-11-13 / automated-Wine (Xvfb :77) / Claude (background run)

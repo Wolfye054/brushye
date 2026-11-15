@@ -1,5 +1,5 @@
 # L-006 Clip to layer below; lock transparent pixels
-- Status: **observed** (clipping exact for Normal/Multiply; run 2 2026-11-14: semi-transparent clipped layer, Multiply base, folder bases; lock: alpha exact, AA edge rule open)
+- Status: **implemented** (M10, 2026-11-14; open items below) / **observed** (clipping exact for Normal/Multiply; run 2 2026-11-14: semi-transparent clipped layer, Multiply base, folder bases; lock: alpha exact, AA edge rule open)
 - CSP version: 1.13.2 (PRO, 64-bit, build 202301210208)
 - Needs: automated-Wine OK
 - Date / method / observer: 2026-11-13 / automated-Wine (Xvfb :77) / Claude (background run)

@@ -236,6 +236,21 @@ Move the selection.
 | `dx` | i64 | required `key=` | Horizontal offset in px |
 | `dy` | i64 | required `key=` | Vertical offset in px |
 
+### `select.blur` (v1, undoable)
+Blur the selection's border.
+
+| Parameter | Kind | Form | Description |
+|---|---|---|---|
+| `strength` | f64 | required `key=` | Strength in px (0.5 and up) |
+
+### `select.from_layer` (v1, undoable)
+Selection from a layer's transparency.
+
+| Parameter | Kind | Form | Description |
+|---|---|---|---|
+| `layer` | layer id | positional | Raster layer |
+| `op` | layer selection op (create\|add\|delete\|overlap) | optional `key=` | create (default), add, delete or overlap (Select Overlapping Area) |
+
 ### `edit.fill` (v1, undoable)
 Fill the selection (or layer) with a colour.
 

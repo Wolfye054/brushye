@@ -277,6 +277,7 @@ pub fn dialogs(app: &mut App, ctx: &egui::Context) {
         Dialog::PenPressure { .. } => "Pen pressure settings",
         Dialog::Expand { .. } => "Expand selected area",
         Dialog::Shrink { .. } => "Shrink selected area",
+        Dialog::Blur { .. } => "Blur border",
         Dialog::Confirm(_) | Dialog::Notice(_) => "Brushye",
         Dialog::McpReplace(_) => "AI client",
     };
@@ -410,6 +411,26 @@ pub fn dialogs(app: &mut App, ctx: &egui::Context) {
                         done = true;
                     }
                 });
+            }
+            Dialog::Blur { strength } => {
+                ui.horizontal(|ui| {
+                    ui.label("Strength");
+                    ui.add(
+                        egui::DragValue::new(strength)
+                            .range(0.5..=1000.0)
+                            .speed(0.1)
+                            .fixed_decimals(2)
+                            .suffix(" px"),
+                    );
+                    if ui.button("OK").clicked() {
+                        let s = *strength;
+                        app.select_blur(s);
+                        done = true;
+                    }
+                });
+                if ui.button("Cancel").clicked() {
+                    done = true;
+                }
             }
             Dialog::Notice(msg) => {
                 ui.label(msg.as_str());

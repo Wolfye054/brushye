@@ -1099,6 +1099,42 @@ fn edit(d: &mut Document, cmd: &Command, pressure_curve: &Curve) -> Result<(), E
             let v = sel::shift(&v, d.width, d.height, p.dx, p.dy);
             set_selection(d, v);
         }
+        Command::SelectBlur(p) => {
+            if !(p.strength.is_finite() && (0.5..=1000.0).contains(&p.strength)) {
+                return Err(ExecError(format!(
+                    "select.blur: strength {} is not in 0.5..=1000",
+                    p.strength
+                )));
+            }
+            let v = current_selection(d)?;
+            let v = sel::blur(&v, d.width, d.height, p.strength);
+            set_selection(d, v);
+        }
+        Command::SelectFromLayer(p) => {
+            let (w, h) = (d.width, d.height);
+            let l = d.layer(p.layer).ok_or(DocError::NoSuchLayer(p.layer))?;
+            if l.is_folder() {
+                return Err(ExecError(format!("{}: a folder has no pixels", p.layer)));
+            }
+            let mut a = vec![0u8; w as usize * h as usize];
+            for ((tx, ty), t) in l.tiles.iter() {
+                let ts = TILE_SIZE as u32;
+                for (i, px) in t.px.as_chunks::<4>().0.iter().enumerate() {
+                    let x = *tx as u32 * ts + i as u32 % ts;
+                    let y = *ty as u32 * ts + i as u32 / ts;
+                    if x < w && y < h {
+                        a[(y * w + x) as usize] = px[3];
+                    }
+                }
+            }
+            let op = p.op.unwrap_or(sel::LayerSelOp::Create);
+            // CSP offers Add / Delete / Overlap only with a selection.
+            let s = match op {
+                sel::LayerSelOp::Create => vec![0u8; a.len()],
+                _ => current_selection(d)?,
+            };
+            set_selection(d, sel::from_layer(op, &s, &a));
+        }
         Command::EditFill(p) => {
             if p.color.0[3] != 255 {
                 return Err(ExecError(

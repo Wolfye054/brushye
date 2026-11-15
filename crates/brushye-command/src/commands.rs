@@ -9,7 +9,7 @@ use crate::params;
 use crate::params::{Arg, Blob, JsonReader, Mode, ParamSpec, Points, Reader, Samples};
 use crate::syntax::{RawLine, Value};
 use crate::tools::{Chip, Tool};
-use brushye_core::selection::SelectMode;
+use brushye_core::selection::{LayerSelOp, SelectMode};
 
 /// How a command interacts with history (D-013, spec H-001).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -373,6 +373,20 @@ params! {
         w: u32 = key "Shrinking width in px",
         shape: Option<MorphShape> = opt "square (default) or round",
         canvas_edge: Option<bool> = opt "Shrink at edge of canvas (default true)",
+    }
+}
+params! {
+    /// Select > Blur border: soften the selection's edge (S-001 run 6).
+    pub struct SelectBlur {
+        strength: f64 = key "Strength in px (0.5 and up)",
+    }
+}
+params! {
+    /// Layer > Selection from Layer: the layer's pixel alpha as a selection, or combined with
+    /// the current one (S-001 run 6).
+    pub struct SelectFromLayer {
+        layer: LayerId = pos "Raster layer",
+        op: Option<LayerSelOp> = opt "create (default), add, delete or overlap (Select Overlapping Area)",
     }
 }
 params! {
@@ -782,6 +796,8 @@ registry! {
         SelectExpand(SelectExpand) = "select.expand" v 1 Undoable "Expand selected area",
         SelectShrink(SelectShrink) = "select.shrink" v 1 Undoable "Shrink selected area",
         SelectMove(SelectMove) = "select.move" v 1 Undoable "Move the selection",
+        SelectBlur(SelectBlur) = "select.blur" v 1 Undoable "Blur the selection's border",
+        SelectFromLayer(SelectFromLayer) = "select.from_layer" v 1 Undoable "Selection from a layer's transparency",
         EditFill(EditFill) = "edit.fill" v 1 Undoable "Fill the selection (or layer) with a colour",
         EditDelete(EditDelete) = "edit.delete" v 1 Undoable "Clear the selection (or layer)",
         LayerShow(LayerShow) = "layer.show" v 1 AppState "Show or hide a layer (not undoable, as in CSP)",

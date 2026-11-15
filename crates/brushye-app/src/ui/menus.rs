@@ -364,7 +364,22 @@ pub fn layer_context_items(app: &mut App, ui: &mut Ui) {
         ui.separator();
         item(ui, "Advanced settings…", "", false);
     });
-    sub(ui, "Selection from layer", false, |_| {});
+    // Selection from Layer (S-001 run 6): Add / Delete / Overlap need a selection.
+    let raster = app.active_layer().is_some_and(|l| !l.is_folder());
+    let has = app.has_selection();
+    sub(ui, "Selection from layer", raster, |ui| {
+        use brushye_command::core::selection::LayerSelOp as Op;
+        for (label, op, enabled) in [
+            ("Create selection", Op::Create, true),
+            ("Add selection", Op::Add, has),
+            ("Delete selection", Op::Delete, has),
+            ("Select overlapping area", Op::Overlap, has),
+        ] {
+            if item(ui, label, "", enabled) {
+                app.selection_from_layer(op);
+            }
+        }
+    });
     off(ui, &["Rasterize", "Convert layer…"]);
     ui.separator();
     off(
@@ -430,7 +445,9 @@ fn select_menu(app: &mut App, ui: &mut Ui) {
             edge: true,
         });
     }
-    item(ui, "Blur border…", "", false);
+    if item(ui, "Blur border…", "", has) {
+        app.dialog = Some(Dialog::Blur { strength: 1.0 });
+    }
     ui.separator();
     item(ui, "Select color gamut…", "", false);
     ui.separator();

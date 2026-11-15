@@ -186,3 +186,49 @@ fn journal_replays_selections() {
     let h = |s: &Session| s.document().map(|d| d.content_hash());
     assert_eq!(h(&r), h(&s));
 }
+
+#[test]
+fn blur_border_and_selection_from_layer() {
+    let mut s = Session::new();
+    run(
+        &mut s,
+        "doc.new 120 80\nlayer.new L1\nlayer.pixels L1 x=10 y=10 w=2 h=1 data=b64:AAAAgAAAAP8=",
+    );
+    fails(&mut s, "select.blur strength=5");
+    fails(&mut s, "select.from_layer L1 op=add");
+    // Create Selection: the layer's alpha.
+    run(&mut s, "select.from_layer L1");
+    assert_eq!(
+        (sel(&mut s, 10, 10), sel(&mut s, 11, 10)),
+        (json!(128), json!(255))
+    );
+    // Add: S + A − ⌈S·A/255⌉; Delete: ⌊S·(255−A)/255⌋; Overlap: ⌊S·A/255⌋ (S-001 run 6).
+    run(
+        &mut s,
+        "select.rect x=0 y=0 w=120 h=80\nselect.invert\nselect.all",
+    );
+    run(&mut s, "select.from_layer L1 op=delete");
+    assert_eq!(
+        (
+            sel(&mut s, 10, 10),
+            sel(&mut s, 11, 10),
+            sel(&mut s, 50, 50)
+        ),
+        (json!(127), json!(0), json!(255))
+    );
+    run(&mut s, "select.from_layer L1 op=overlap");
+    assert_eq!(sel(&mut s, 10, 10), json!(63));
+    run(&mut s, "select.from_layer L1 op=add");
+    assert_eq!(sel(&mut s, 10, 10), json!(128 + 63 - 32));
+    // Blur border softens a hard edge.
+    run(
+        &mut s,
+        "select.rect x=20 y=20 w=60 h=40\nselect.blur strength=5",
+    );
+    let edge = sel(&mut s, 20, 40).as_u64().unwrap_or(0);
+    assert!(edge > 0 && edge < 255, "{edge}");
+    assert_eq!(sel(&mut s, 50, 40), json!(255));
+    fails(&mut s, "select.blur strength=0.1");
+    run(&mut s, "layer.new L2 kind=folder");
+    fails(&mut s, "select.from_layer L2");
+}

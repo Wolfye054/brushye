@@ -552,6 +552,23 @@ impl App {
         }));
     }
 
+    pub(crate) fn select_blur(&mut self, strength: f64) {
+        self.exec(Command::SelectBlur(commands::SelectBlur { strength }));
+    }
+
+    /// Layer > Selection from Layer on the active layer.
+    pub(crate) fn selection_from_layer(
+        &mut self,
+        op: brushye_command::core::selection::LayerSelOp,
+    ) {
+        if let Some(layer) = self.session.active_layer() {
+            self.exec(Command::SelectFromLayer(commands::SelectFromLayer {
+                layer,
+                op: Some(op),
+            }));
+        }
+    }
+
     pub(crate) fn select_shrink(&mut self, w: u32, round: bool, edge: bool) {
         self.exec(Command::SelectShrink(commands::SelectShrink {
             w,

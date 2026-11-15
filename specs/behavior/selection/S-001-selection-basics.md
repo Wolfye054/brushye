@@ -245,11 +245,38 @@ Same setup; data in `data/run3/`. Readouts as before (Edit > Fill on an empty la
   k_100, s_14, s_16 and run 3's w = 3 and 25) and the disk `dx² + dy² < (w+1)²` for other
   widths (exact at several measured widths, within a pixel per row at the others).
 
+## Run 6 (2026-11-15, pen display :78): Blur border and Selection from Layer
+Data in `data/run6/`.
+
+### Blur border
+- Select > Blur border…, Strength 0.5, 1, 1.5, 2, 3, 4, 5, 6, 8, 10, 15, 20, 30, 50 on the
+  rectangle [100,400)² (`b_<strength>`).
+- Rule: **a separable Gaussian, σ = 0.3 × strength, over offsets −r..r with r = max(⌊strength⌋,
+  1), horizontal pass then vertical, each pass floored to 8 bits.** Whole images exact at 0.5,
+  1, 1.5, 2, 5 and 6; the other strengths differ by ±1 on scattered pixels (3: 2 384 px at the
+  edge, 30: 6 242, 50: 8 480 of which 8 are off by 2), consistent with a different arithmetic
+  precision; fixed-point weights at 256/1024/4096/65536 don't remove them. Strengths 0.5
+  and 1 only lower the inner edge row to 254 (σ ≤ 0.3).
+- Which pass comes first and the canvas edge treatment can't be told from this data
+  (Brushye: horizontal first, outside the canvas = unselected).
+
+### Layer > Selection from Layer
+- Layer 1 = the rectangle [100,400)² blurred at 20 and filled (alpha A, `A`); selection B =
+  [300,600)² blurred at 20 (`B`); readouts on Layer 2 (`fl_*`). 2 592 pixels have both values
+  partial.
+- **Create Selection** = A. **Add Selection** = A + B − ⌈A·B/255⌉. **Delete Selection** =
+  ⌊B·(255−A)/255⌋. **Select Overlapping Area** = ⌊A·B/255⌋. All exact on every pixel; these are
+  not the tool modes' rules (saturating add/subtract, run 2). Add/Delete/Overlap are greyed
+  in the menu without a selection.
+- Brushye: `select.blur strength=`, `select.from_layer L op=create|add|delete|overlap`; the
+  Select menu's Blur border… and the Layer menu's Selection from Layer submenu.
+
 ## Open questions
 - Ellipse edge curve (AA and None; run 4 data and the fits that failed); polygon AA rounding
   (+1 on a third of the edge pixels).
 - The rounded kernel's construction (measured for 36 widths, run 5; unmeasured widths use a
   disk approximation).
-- Blur border (data recorded); Selection from Layer arithmetic (one pixel each).
+- Blur border's ±1 precision at some strengths; the layer alpha used by Selection from Layer
+  for layers with a mask or opacity (not observed).
 - Shrink selection sub tool, Auto select, Select Color Gamut, Quick mask, selection layers;
   Selection pen with anti-aliasing on; modifier keys for the modes.

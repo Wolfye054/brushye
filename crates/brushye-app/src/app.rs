@@ -85,6 +85,10 @@ pub enum Dialog {
         width: u32,
         round: bool,
     },
+    /// Select > Blur border (S-001 run 6).
+    Blur {
+        strength: f64,
+    },
     /// Select > Shrink selected area (U-016).
     Shrink {
         width: u32,

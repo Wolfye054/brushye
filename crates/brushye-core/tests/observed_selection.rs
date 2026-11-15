@@ -5,7 +5,9 @@ mod common;
 
 use brushye_core::brush::{self, BrushSettings};
 use brushye_core::input::Sample;
-use brushye_core::selection::{SelectMode, Shape, combine, invert, morph, rasterize};
+use brushye_core::selection::{
+    LayerSelOp, SelectMode, Shape, blur, combine, from_layer, invert, morph, rasterize,
+};
 use brushye_core::{Grid8, Layer, LayerId, LayerKind};
 use common::Img;
 
@@ -281,5 +283,49 @@ fn rounded_kernels() {
     for w in [14, 16] {
         let got = morph(&r, W, H, w, true, false, 0);
         assert_eq!(mismatches(&got, &alpha(&format!("run5/s_{w}"))), 0, "w={w}");
+    }
+}
+
+/// S-001 run 6: Blur border on a 300×300 rectangle; Selection from Layer arithmetic.
+#[test]
+fn blur_border() {
+    let mut r = vec![0u8; (W * H) as usize];
+    for y in 100..400 {
+        for x in 100..400 {
+            r[(y * W + x) as usize] = 255;
+        }
+    }
+    for s in [
+        "0.5", "1", "1.5", "2", "3", "4", "5", "6", "8", "10", "15", "20", "30", "50",
+    ] {
+        let got = blur(&r, W, H, s.parse().unwrap_or(1.0));
+        let want = alpha(&format!("run6/b_{s}"));
+        // ±1 on scattered pixels at some strengths; 8 corner pixels are 2 off at 50.
+        let tol = if s == "50" { 2 } else { 1 };
+        assert!(
+            got.iter().zip(&want).all(|(a, b)| a.abs_diff(*b) <= tol),
+            "strength {s}: more than ±{tol}"
+        );
+        let n = mismatches(&got, &want);
+        if ["0.5", "1", "1.5", "2", "5", "6"].contains(&s) {
+            assert_eq!(n, 0, "strength {s}");
+        }
+    }
+}
+
+#[test]
+fn selection_from_layer() {
+    let (a, b) = (alpha("run6/A"), alpha("run6/B"));
+    for (op, name) in [
+        (LayerSelOp::Create, "fl_create"),
+        (LayerSelOp::Add, "fl_add"),
+        (LayerSelOp::Delete, "fl_del"),
+        (LayerSelOp::Overlap, "fl_int"),
+    ] {
+        assert_eq!(
+            mismatches(&from_layer(op, &b, &a), &alpha(&format!("run6/{name}"))),
+            0,
+            "{name}"
+        );
     }
 }

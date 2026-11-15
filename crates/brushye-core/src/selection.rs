@@ -300,6 +300,90 @@ pub fn combine(mode: SelectMode, a: Option<&[u8]>, b: &[u8]) -> Vec<u8> {
         .collect()
 }
 
+/// How Layer > Selection from Layer combines a layer's alpha `A` with the selection `S`
+/// (S-001 run 6, exact on 2 592 pixels where both are partial). Not the tool modes' rules.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LayerSelOp {
+    /// Create Selection: `A`.
+    Create,
+    /// Add Selection: `S + A − ⌈S·A/255⌉`.
+    Add,
+    /// Delete Selection: `⌊S·(255 − A)/255⌋`.
+    Delete,
+    /// Select Overlapping Area: `⌊S·A/255⌋`.
+    Overlap,
+}
+
+impl LayerSelOp {
+    pub const ALL: [LayerSelOp; 4] = [Self::Create, Self::Add, Self::Delete, Self::Overlap];
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Create => "create",
+            Self::Add => "add",
+            Self::Delete => "delete",
+            Self::Overlap => "overlap",
+        }
+    }
+    pub fn from_name(s: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|m| m.name() == s)
+    }
+}
+
+/// Selection from a layer's alpha `a` combined with the current selection `s`.
+pub fn from_layer(op: LayerSelOp, s: &[u8], a: &[u8]) -> Vec<u8> {
+    s.iter()
+        .zip(a)
+        .map(|(&s, &a)| {
+            let (s, a) = (u32::from(s), u32::from(a));
+            (match op {
+                LayerSelOp::Create => a,
+                LayerSelOp::Add => s + a - (s * a).div_ceil(255),
+                LayerSelOp::Delete => s * (255 - a) / 255,
+                LayerSelOp::Overlap => s * a / 255,
+            }) as u8
+        })
+        .collect()
+}
+
+/// Select > Blur border (S-001 run 6): a separable Gaussian with σ = 0.3·strength over
+/// offsets −r..=r, r = max(⌊strength⌋, 1), horizontal pass then vertical, each floored to
+/// 8 bits. Exact at most observed strengths, ±1 on scattered pixels at others (3, 30, 50).
+/// Pixels outside the canvas count as unselected (not observed).
+pub fn blur(v: &[u8], w: u32, h: u32, strength: f64) -> Vec<u8> {
+    let (wu, hu) = (w as usize, h as usize);
+    let sig = 0.3 * strength;
+    let r = (strength.floor() as usize).max(1);
+    let mut k: Vec<f64> = (0..=2 * r)
+        .map(|i| {
+            let o = i as f64 - r as f64;
+            libm::exp(-o * o / (2.0 * sig * sig))
+        })
+        .collect();
+    let sum: f64 = k.iter().sum();
+    for x in &mut k {
+        *x /= sum;
+    }
+    let pass = |src: &[u8], len: usize, count: usize, stride: usize, step: usize| {
+        let mut out = vec![0u8; src.len()];
+        for line in 0..count {
+            let base = line * stride;
+            for i in 0..len {
+                let mut acc = 0.0;
+                for (j, kw) in k.iter().enumerate() {
+                    let p = i as i64 + j as i64 - r as i64;
+                    if p >= 0 && (p as usize) < len {
+                        acc += kw * f64::from(src[base + p as usize * step]);
+                    }
+                }
+                out[base + i * step] = (acc + 1e-9).floor().clamp(0.0, 255.0) as u8;
+            }
+        }
+        out
+    };
+    let horizontal = pass(v, wu, hu, wu, 1);
+    pass(&horizontal, hu, wu, 1, wu)
+}
+
 /// Invert selected area: `255 − S`.
 pub fn invert(v: &mut [u8]) {
     for p in v {

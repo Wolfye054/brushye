@@ -323,6 +323,10 @@ fn kind_icon(k: SubKind) -> Option<&'static str> {
         SubKind::SelectionPen => icons::PEN,
         SubKind::EraseSelection => icons::ERASER,
         SubKind::ShrinkSelection => icons::LASSO,
+        SubKind::FillEditing | SubKind::FillOthers => icons::PAINT_BUCKET,
+        SubKind::FillEnclose => icons::SELECTION_PLUS,
+        SubKind::FillUnfilled => icons::PAINT_BRUSH_HOUSEHOLD,
+        SubKind::AutoEditing | SubKind::AutoAll | SubKind::AutoReferred => icons::MAGIC_WAND,
     })
 }
 
@@ -914,7 +918,7 @@ pub fn tool_property(ui: &mut Ui, c: &Colors, st: &mut UiState, r: Rect) {
                             .map_or("Selection", |c| c.0);
                         ui.label(egui::RichText::new(cat.trim()).size(10.0).color(c.text_dim));
                     }
-                    let out = rows::draw(ui, c, row, &mut sub.preset);
+                    let out = rows::draw(ui, c, row, sub.kind, &mut sub.preset);
                     if out.dynamics.is_some() {
                         dyn_open = out.dynamics;
                     }
@@ -1426,7 +1430,13 @@ pub fn detail_window(ctx: &egui::Context, st: &mut UiState) {
                                     let out = ui
                                         .add_enabled_ui(info.enabled, |ui| {
                                             ui.vertical(|ui| {
-                                                rows::draw(ui, c, info.row, &mut sub.preset)
+                                                rows::draw(
+                                                    ui,
+                                                    c,
+                                                    info.row,
+                                                    sub.kind,
+                                                    &mut sub.preset,
+                                                )
                                             })
                                             .inner
                                         })

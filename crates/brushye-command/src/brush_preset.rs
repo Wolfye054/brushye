@@ -36,6 +36,9 @@ params! {
         density_pressure: Option<u8> = opt "Pen pressure controls density; minimum in percent",
         density_curve: Option<Curve> = opt "Density pressure curve points [x,y;…]",
         mode: Option<SelectMode> = opt "Selection mode (selection sub tools only)",
+        tolerance: Option<f64> = opt "Fill / Auto select tolerance in percent",
+        close_gap: Option<u8> = opt "Fill / Auto select Close gap level 0..=5",
+        connected: Option<bool> = opt "Fill / Auto select: apply to connected pixels only",
     }
 }
 
@@ -63,6 +66,9 @@ impl BrushPreset {
             density_pressure: p.density_pressure,
             density_curve: p.density_curve.clone(),
             mode: p.mode,
+            tolerance: None,
+            close_gap: None,
+            connected: None,
         }
     }
 

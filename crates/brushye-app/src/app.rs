@@ -1437,6 +1437,10 @@ impl App {
                 true
             }
             ToolId::Hand => true,
+            ToolId::Fill | ToolId::AutoSelect => {
+                self.fill_press(pos);
+                true
+            }
             _ => false,
         }
     }
@@ -1693,7 +1697,7 @@ impl App {
                 response.clone().on_hover_cursor(egui::CursorIcon::ZoomIn);
                 return;
             }
-            ToolId::Eyedropper => {
+            ToolId::Eyedropper | ToolId::Fill | ToolId::AutoSelect => {
                 response
                     .clone()
                     .on_hover_cursor(egui::CursorIcon::Crosshair);

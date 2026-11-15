@@ -243,6 +243,37 @@ Blur the selection's border.
 |---|---|---|---|
 | `strength` | f64 | required `key=` | Strength in px (0.5 and up) |
 
+### `select.auto` (v1, undoable)
+Auto select the area around a point.
+
+| Parameter | Kind | Form | Description |
+|---|---|---|---|
+| `layer` | layer id | positional | Layer to read with ref=layer |
+| `x` | u32 | required `key=` | Click x in canvas pixels |
+| `y` | u32 | required `key=` | Click y in canvas pixels |
+| `tolerance` | f64 | optional `key=` | Tolerance in percent (default 10) |
+| `connected` | bool | optional `key=` | Apply to connected pixels only (default true) |
+| `close_gap` | u8 | optional `key=` | Close gap level 0 (off, default) ..= 5 |
+| `aa` | bool | optional `key=` | Anti-aliasing (default true) |
+| `refer` | reference (layer\|all) | optional `key=` | layer (default) or all (the visible image) |
+| `mode` | selection mode (new\|add\|subtract\|intersect) | optional `key=` | new (default), add, subtract or intersect |
+
+### `fill.area` (v1, undoable)
+Fill the area around a point (Fill tool).
+
+| Parameter | Kind | Form | Description |
+|---|---|---|---|
+| `layer` | layer id | positional | Layer to paint (and to read with ref=layer) |
+| `x` | u32 | required `key=` | Click x in canvas pixels |
+| `y` | u32 | required `key=` | Click y in canvas pixels |
+| `color` | colour | required `key=` | Colour #rrggbb |
+| `tolerance` | f64 | optional `key=` | Tolerance in percent (default 10) |
+| `connected` | bool | optional `key=` | Apply to connected pixels only (default true) |
+| `close_gap` | u8 | optional `key=` | Close gap level 0 (off, default) ..= 5 |
+| `aa` | bool | optional `key=` | Anti-aliasing (default true) |
+| `opacity` | u8 | optional `key=` | Opacity in percent (default 100) |
+| `refer` | reference (layer\|all) | optional `key=` | layer (default: the layer itself) or all (the visible image) |
+
 ### `select.from_layer` (v1, undoable)
 Selection from a layer's transparency.
 
@@ -342,6 +373,9 @@ Change a sub tool's name or settings.
 | `density_pressure` | u8 | optional `key=` | Pen pressure controls density; minimum in percent |
 | `density_curve` | curve points [x,y;…] | optional `key=` | Density pressure curve points [x,y;…] |
 | `mode` | selection mode (new\|add\|subtract\|intersect) | optional `key=` | Selection mode (selection sub tools) |
+| `tolerance` | f64 | optional `key=` | Fill / Auto select tolerance in percent |
+| `close_gap` | u8 | optional `key=` | Fill / Auto select Close gap level 0..=5 |
+| `connected` | bool | optional `key=` | Fill / Auto select: apply to connected pixels only |
 | `clear` | string | optional `key=` | Comma-separated settings to turn off (not size) |
 
 ### `subtool.add` (v1, tool)

@@ -12,6 +12,7 @@
 pub mod blend;
 pub mod brush;
 pub mod document;
+pub mod fill;
 pub mod hash;
 pub mod ids;
 pub mod input;

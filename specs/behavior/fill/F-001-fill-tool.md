@@ -1,5 +1,8 @@
 # F-001 Fill tool (and the flood fill shared with Auto select)
-- Status: **observed** (run 1: settings layout, tolerance metric, anti-aliasing, close gap;
+- Status: **implemented** (2026-11-15: `fill.area`, `select.auto`, the Fill and Auto select
+  tools; exact on every test in `crates/brushye-core/tests/observed_fill.rs`; not yet: Area
+  scaling, Enclose and fill, Paint unfilled area, Selection for referred layers) /
+  **observed** (run 1: settings layout, tolerance metric, anti-aliasing, close gap;
   run 2: area scaling, connected off, opacity, editing-layer mixing, Auto select; open items
   below)
 - CSP version: 1.13.2 (PRO, 64-bit, build 202301210208)
@@ -122,6 +125,15 @@ Same setup on `ring`, tolerance 10, click at canvas (400, 250); data in `data/ru
   same point and reading the selection out (Edit > Fill on the empty layer,
   `autosel_default`) gives **exactly** the default fill's coverage, anti-aliased values
   included (0 pixels differ from `ring_default`): Fill and Auto select share one region.
+
+## Implementation notes (Brushye)
+- Anti-aliasing border: CSP softens only the **4-neighbours** of the region (diagonal
+  neighbours stay 0: 184 ring pixels at t = 0), and at t ≥ 50 only region pixels with a
+  4-neighbour outside it (the gray ramp has none, so it stays 255). With these two, every
+  export in runs 1–2 is reproduced exactly.
+- Chosen, not observed: 4-connectivity of the region; Close gap as a box closing with boxes
+  2, 4, 6, 11, 21 px (reproduces every hold/leak outcome; the fill's shape inside a closed
+  gap is approximate); a fill inside a selection is clipped like a stroke.
 
 ## Open questions
 - The general anti-aliasing rule (seed colours other than white; t ≥ 50 on the ramp).

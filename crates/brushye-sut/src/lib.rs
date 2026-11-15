@@ -384,6 +384,9 @@ fn map(name: &str, row: &Row) -> Result<SubTool, SutError> {
         density_pressure,
         density_curve,
         mode: None,
+        tolerance: None,
+        close_gap: None,
+        connected: None,
     };
     notes.extend(unmapped(row));
     preset

@@ -117,7 +117,10 @@ edits, Blur border, Selection from Layer, clipped strokes, selection pen, `.brsh
 Selection area tool, ants and Launcher. Open: the ellipse edge curve, the rounded kernel's
 construction (measured widths are exact).
 
-**Part 3 (proposed):** Fill tool and Auto select (shared flood fill; observation first).
+**Part 3 (started 2026-11-15):** Fill tool and Auto select (F-001 runs 1–2). Implemented:
+`fill.area`, `select.auto`, the shared region (tolerance, connected, Close gap, anti-aliasing,
+opacity), the Fill and Auto select tools. Open: Area scaling, Enclose and fill, Paint unfilled
+area, Selection for referred layers.
 
 ## M11 — .clip import
 - Container/structure study from maintainer samples; raster layers, folders, blend modes,

@@ -612,3 +612,75 @@ impl App {
         }
     }
 }
+
+impl App {
+    /// A click with the Fill or Auto select tool (F-001): one `fill.area` or `select.auto`.
+    pub(super) fn fill_press(&mut self, pos: Pos2) {
+        let tool = self.ui.tools.tool;
+        let Some(sub) = self
+            .ui
+            .tools
+            .sets
+            .get(&tool)
+            .and_then(|s| s.current())
+            .cloned()
+        else {
+            return;
+        };
+        let Some(reads_all) = sub.kind.fill_reads_all() else {
+            self.status = format!("“{}” is not available yet", sub.name);
+            return;
+        };
+        let Some(doc) = self.doc() else { return };
+        let c = self.to_canvas(pos);
+        if c[0] < 0.0 || c[1] < 0.0 || c[0] >= f64::from(doc.width) || c[1] >= f64::from(doc.height)
+        {
+            return;
+        }
+        let (x, y) = (c[0] as u32, c[1] as u32);
+        let Some(layer) = self.session.active_layer() else {
+            self.status = "Select a layer".into();
+            return;
+        };
+        let p = &sub.preset;
+        let refer = Some(if reads_all {
+            commands::FillRef::All
+        } else {
+            commands::FillRef::Layer
+        });
+        let aa = Some(p.aa != Some(Aa::None));
+        let cmd = if tool == ToolId::Fill {
+            let Some(rgb) = self.ui.colour.drawing() else {
+                self.status = "Fill with the transparent colour is not available yet".into();
+                return;
+            };
+            Command::FillArea(commands::FillArea {
+                layer,
+                x,
+                y,
+                color: brushye_command::core::Rgba8([rgb[0], rgb[1], rgb[2], 255]),
+                tolerance: p.tolerance,
+                connected: p.connected,
+                close_gap: p.close_gap,
+                aa,
+                opacity: p.opacity,
+                refer,
+            })
+        } else {
+            Command::SelectAuto(commands::SelectAuto {
+                layer,
+                x,
+                y,
+                tolerance: p.tolerance,
+                connected: p.connected,
+                close_gap: p.close_gap,
+                aa,
+                refer,
+                mode: p.mode,
+            })
+        };
+        if self.exec(cmd) && tool == ToolId::Fill {
+            self.ui.colour.used();
+        }
+    }
+}

@@ -103,6 +103,11 @@ word_enum!(
     }
 );
 word_enum!(
+    /// What a fill or auto-select click looks at (F-001): the given layer only (Refer only to
+    /// editing layer) or the visible image (Refer other layers / Refer to all layers).
+    FillRef, "reference (layer|all)", { Layer = "layer", All = "all" }
+);
+word_enum!(
     /// Expand / Shrink selected area type (U-016).
     MorphShape, "shape (square|round)", { Square = "square", Round = "round" }
 );
@@ -376,6 +381,36 @@ params! {
     }
 }
 params! {
+    /// Fill tool: fill the area around a canvas point with a colour (F-001). Settings left out
+    /// take CSP's defaults for the sub tool: tolerance 10, connected, anti-aliased, opacity 100.
+    pub struct FillArea {
+        layer: LayerId = pos "Layer to paint (and to read with ref=layer)",
+        x: u32 = key "Click x in canvas pixels",
+        y: u32 = key "Click y in canvas pixels",
+        color: Rgba8 = key "Colour #rrggbb",
+        tolerance: Option<f64> = opt "Tolerance in percent (default 10)",
+        connected: Option<bool> = opt "Apply to connected pixels only (default true)",
+        close_gap: Option<u8> = opt "Close gap level 0 (off, default) ..= 5",
+        aa: Option<bool> = opt "Anti-aliasing (default true)",
+        opacity: Option<u8> = opt "Opacity in percent (default 100)",
+        refer: Option<FillRef> = opt "layer (default: the layer itself) or all (the visible image)",
+    }
+}
+params! {
+    /// Auto select: select the area around a canvas point (F-001; same area as the Fill tool).
+    pub struct SelectAuto {
+        layer: LayerId = pos "Layer to read with ref=layer",
+        x: u32 = key "Click x in canvas pixels",
+        y: u32 = key "Click y in canvas pixels",
+        tolerance: Option<f64> = opt "Tolerance in percent (default 10)",
+        connected: Option<bool> = opt "Apply to connected pixels only (default true)",
+        close_gap: Option<u8> = opt "Close gap level 0 (off, default) ..= 5",
+        aa: Option<bool> = opt "Anti-aliasing (default true)",
+        refer: Option<FillRef> = opt "layer (default) or all (the visible image)",
+        mode: Option<SelectMode> = opt "new (default), add, subtract or intersect",
+    }
+}
+params! {
     /// Select > Blur border: soften the selection's edge (S-001 run 6).
     pub struct SelectBlur {
         strength: f64 = key "Strength in px (0.5 and up)",
@@ -477,6 +512,9 @@ params! {
         density_pressure: Option<u8> = opt "Pen pressure controls density; minimum in percent",
         density_curve: Option<Curve> = opt "Density pressure curve points [x,y;…]",
         mode: Option<SelectMode> = opt "Selection mode (selection sub tools)",
+        tolerance: Option<f64> = opt "Fill / Auto select tolerance in percent",
+        close_gap: Option<u8> = opt "Fill / Auto select Close gap level 0..=5",
+        connected: Option<bool> = opt "Fill / Auto select: apply to connected pixels only",
         clear: Option<String> = opt "Comma-separated settings to turn off (not size)",
     }
 }
@@ -797,6 +835,8 @@ registry! {
         SelectShrink(SelectShrink) = "select.shrink" v 1 Undoable "Shrink selected area",
         SelectMove(SelectMove) = "select.move" v 1 Undoable "Move the selection",
         SelectBlur(SelectBlur) = "select.blur" v 1 Undoable "Blur the selection's border",
+        SelectAuto(SelectAuto) = "select.auto" v 1 Undoable "Auto select the area around a point",
+        FillArea(FillArea) = "fill.area" v 1 Undoable "Fill the area around a point (Fill tool)",
         SelectFromLayer(SelectFromLayer) = "select.from_layer" v 1 Undoable "Selection from a layer's transparency",
         EditFill(EditFill) = "edit.fill" v 1 Undoable "Fill the selection (or layer) with a colour",
         EditDelete(EditDelete) = "edit.delete" v 1 Undoable "Clear the selection (or layer)",

@@ -19,7 +19,9 @@ use brushye_core::selection::{self as sel, SelectMode, Shape};
 use brushye_core::{BlendMode, Document, Grid8, Layer, LayerId, LayerKind, Rgba8, TILE_SIZE};
 use serde_json::{Value as Json, json};
 
-use crate::commands::{self, Class, Command, MaskFill, MorphShape, Paper, Place, Query, Target};
+use crate::commands::{
+    self, Class, Command, FillRef, MaskFill, MorphShape, Paper, Place, Query, Target,
+};
 use crate::params::{Arg, value_text};
 use crate::syntax::{Line, RawLine, parse_line, print_line};
 
@@ -1099,6 +1101,60 @@ fn edit(d: &mut Document, cmd: &Command, pressure_curve: &Curve) -> Result<(), E
             let v = sel::shift(&v, d.width, d.height, p.dx, p.dy);
             set_selection(d, v);
         }
+        Command::FillArea(p) => {
+            if p.color.0[3] != 255 {
+                return Err(ExecError(
+                    "fill.area: color must be opaque (#rrggbb)".into(),
+                ));
+            }
+            let fp = fill_params(p.tolerance, p.connected, p.close_gap, p.aa)?;
+            let (w, h) = (d.width, d.height);
+            in_canvas(d, p.x, p.y)?;
+            let reference = fill_reference(d, p.layer, p.refer)?;
+            let mut cov = brushye_core::fill::coverage(&reference, w, h, p.x, p.y, &fp);
+            if let Some(o) = p.opacity {
+                if o > 100 {
+                    return Err(DocError::OpacityOutOfRange(u32::from(o)).into());
+                }
+                brushye_core::fill::apply_opacity(&mut cov, o);
+            }
+            let s = d.selection.as_ref().map(|s| s.to_dense(w, h));
+            let l = raster_target(d, p.layer)?;
+            let rgb = [p.color.0[0], p.color.0[1], p.color.0[2]];
+            // Normal ink with the coverage as alpha (F-001 run 2, exact), clipped by the
+            // selection like strokes (not observed for fills).
+            for y in 0..h {
+                for x in 0..w {
+                    let i = (y * w + x) as usize;
+                    if cov[i] == 0 {
+                        continue;
+                    }
+                    let mut a = f64::from(cov[i]) / 255.0;
+                    if let Some(s) = &s {
+                        a *= f64::from(s[i]) / 255.0;
+                    }
+                    let dst = l.pixel(x, y);
+                    let out = ink::apply(InkMode::Normal, dst, rgb, a, l.lock_alpha);
+                    if out != dst {
+                        put_pixel(l, x, y, out);
+                    }
+                }
+            }
+            l.tiles.prune();
+        }
+        Command::SelectAuto(p) => {
+            let fp = fill_params(p.tolerance, p.connected, p.close_gap, p.aa)?;
+            let (w, h) = (d.width, d.height);
+            in_canvas(d, p.x, p.y)?;
+            let reference = fill_reference(d, p.layer, p.refer)?;
+            let cov = brushye_core::fill::coverage(&reference, w, h, p.x, p.y, &fp);
+            let mode = p.mode.unwrap_or_default();
+            let cur = match mode {
+                SelectMode::New => None,
+                _ => d.selection.as_ref().map(|s| s.to_dense(w, h)),
+            };
+            set_selection(d, sel::combine(mode, cur.as_deref(), &cov));
+        }
         Command::SelectBlur(p) => {
             if !(p.strength.is_finite() && (0.5..=1000.0).contains(&p.strength)) {
                 return Err(ExecError(format!(
@@ -1214,6 +1270,56 @@ fn edit(d: &mut Document, cmd: &Command, pressure_curve: &Curve) -> Result<(), E
         }
     }
     Ok(())
+}
+
+/// Fill / Auto select settings with CSP's defaults (F-001).
+fn fill_params(
+    tolerance: Option<f64>,
+    connected: Option<bool>,
+    gap: Option<u8>,
+    aa: Option<bool>,
+) -> Result<brushye_core::fill::FillParams, ExecError> {
+    let t = tolerance.unwrap_or(10.0);
+    if !(0.0..=100.0).contains(&t) {
+        return Err(ExecError(format!("tolerance {t} is not in 0..=100")));
+    }
+    let gap = gap.unwrap_or(0);
+    if gap > 5 {
+        return Err(ExecError(format!("close gap level {gap} is not in 0..=5")));
+    }
+    Ok(brushye_core::fill::FillParams {
+        tolerance: t,
+        connected: connected.unwrap_or(true),
+        close_gap: gap,
+        aa: aa.unwrap_or(true),
+    })
+}
+
+/// The image a fill or auto-select click reads: one layer's own pixels, or the visible
+/// composite (with paper).
+fn fill_reference(
+    d: &Document,
+    layer: LayerId,
+    refer: Option<FillRef>,
+) -> Result<Vec<u8>, ExecError> {
+    let l = d.layer(layer).ok_or(DocError::NoSuchLayer(layer))?;
+    Ok(match refer.unwrap_or(FillRef::Layer) {
+        FillRef::All => brushye_core::render::flatten(d).px,
+        FillRef::Layer => {
+            if l.is_folder() {
+                return Err(ExecError(format!("{layer}: a folder has no pixels")));
+            }
+            let (w, h) = (d.width, d.height);
+            let mut v = vec![0u8; w as usize * h as usize * 4];
+            for y in 0..h {
+                for x in 0..w {
+                    let i = (y * w + x) as usize * 4;
+                    v[i..i + 4].copy_from_slice(&l.pixel(x, y));
+                }
+            }
+            v
+        }
+    })
 }
 
 fn nothing_selected() -> ExecError {

@@ -149,10 +149,19 @@ pub enum SubKind {
     SelectionPen,
     EraseSelection,
     ShrinkSelection,
+    // Fill (F-001).
+    FillEditing,
+    FillOthers,
+    FillEnclose,
+    FillUnfilled,
+    // Auto select (F-001).
+    AutoEditing,
+    AutoAll,
+    AutoReferred,
 }
 
 impl SubKind {
-    pub const ALL: [SubKind; 8] = [
+    pub const ALL: [SubKind; 15] = [
         Self::Brush,
         Self::Rectangle,
         Self::Ellipse,
@@ -161,6 +170,13 @@ impl SubKind {
         Self::SelectionPen,
         Self::EraseSelection,
         Self::ShrinkSelection,
+        Self::FillEditing,
+        Self::FillOthers,
+        Self::FillEnclose,
+        Self::FillUnfilled,
+        Self::AutoEditing,
+        Self::AutoAll,
+        Self::AutoReferred,
     ];
     pub fn name(self) -> &'static str {
         match self {
@@ -172,11 +188,28 @@ impl SubKind {
             Self::SelectionPen => "selection_pen",
             Self::EraseSelection => "erase_selection",
             Self::ShrinkSelection => "shrink_selection",
+            Self::FillEditing => "fill_editing_layer",
+            Self::FillOthers => "fill_other_layers",
+            Self::FillEnclose => "enclose_and_fill",
+            Self::FillUnfilled => "paint_unfilled_area",
+            Self::AutoEditing => "auto_editing_layer",
+            Self::AutoAll => "auto_all_layers",
+            Self::AutoReferred => "auto_referred_layers",
         }
     }
     pub fn from_name(s: &str) -> Option<Self> {
         Self::ALL.into_iter().find(|k| k.name() == s)
     }
+    /// A Fill or Auto select click that Brushye implements, and whether it reads the visible
+    /// image (`Some(true)`) or only the editing layer (`Some(false)`).
+    pub fn fill_reads_all(self) -> Option<bool> {
+        match self {
+            Self::FillEditing | Self::AutoEditing => Some(false),
+            Self::FillOthers | Self::AutoAll => Some(true),
+            _ => None,
+        }
+    }
+
     /// Draws the selection with a brush stroke (`brush.stroke … target=selection`).
     pub fn is_selection_brush(self) -> bool {
         matches!(self, Self::SelectionPen | Self::EraseSelection)
@@ -199,10 +232,11 @@ pub struct SubTool {
 
 impl SubTool {
     pub fn new(tool: Tool, name: &str, preset: BrushPreset) -> Self {
-        let kind = if tool == Tool::Selection {
-            SubKind::Rectangle
-        } else {
-            SubKind::Brush
+        let kind = match tool {
+            Tool::Selection => SubKind::Rectangle,
+            Tool::Fill => SubKind::FillEditing,
+            Tool::AutoSelect => SubKind::AutoEditing,
+            _ => SubKind::Brush,
         };
         Self::with_kind(tool, kind, name, preset)
     }
@@ -270,6 +304,31 @@ pub fn default_shown_kind(tool: Tool, kind: SubKind) -> Vec<String> {
             "stabilization",
         ],
         (_, SubKind::ShrinkSelection) => &[],
+        // F-001: Tool property rows as in CSP 1.13.2.
+        (_, SubKind::FillEditing | SubKind::FillEnclose | SubKind::FillUnfilled) => &[
+            "connected",
+            "close_gap",
+            "tolerance",
+            "area_scaling",
+            "refer_multiple",
+            "opacity",
+        ],
+        (_, SubKind::FillOthers) => &[
+            "connected",
+            "close_gap",
+            "tolerance",
+            "area_scaling",
+            "refer_multiple",
+            "fill_vector_path",
+        ],
+        (_, SubKind::AutoEditing | SubKind::AutoAll | SubKind::AutoReferred) => &[
+            "select_mode",
+            "connected",
+            "close_gap",
+            "tolerance",
+            "area_scaling",
+            "refer_multiple",
+        ],
         (Tool::Brush | Tool::Airbrush, _) => {
             &["size", "opacity", "hardness", "density", "stabilization"]
         }
@@ -412,6 +471,52 @@ pub fn default_set(tool: Tool) -> Option<ToolSet> {
                 items: items
                     .iter()
                     .map(|(n, k, p)| SubTool::with_kind(tool, *k, n, preset(p)))
+                    .collect(),
+                selected: 0,
+            }]
+        }
+        Tool::Fill => {
+            // F-001: CSP's four Fill sub tools (defaults: tolerance 10, Close gap 2, connected).
+            let items = [
+                ("Refer only to editing layer", SubKind::FillEditing),
+                ("Refer other layers", SubKind::FillOthers),
+                ("Enclose and fill", SubKind::FillEnclose),
+                ("Paint unfilled area", SubKind::FillUnfilled),
+            ];
+            vec![SubToolGroup {
+                name: "Fill".into(),
+                items: items
+                    .iter()
+                    .map(|(n, k)| {
+                        SubTool::with_kind(
+                            tool,
+                            *k,
+                            n,
+                            preset("size=10.0 tolerance=10.0 close_gap=2"),
+                        )
+                    })
+                    .collect(),
+                selected: 0,
+            }]
+        }
+        Tool::AutoSelect => {
+            let items = [
+                ("Refer to editing layer only", SubKind::AutoEditing),
+                ("Refer to all layers", SubKind::AutoAll),
+                ("Selection for referred layers", SubKind::AutoReferred),
+            ];
+            vec![SubToolGroup {
+                name: "Auto select".into(),
+                items: items
+                    .iter()
+                    .map(|(n, k)| {
+                        SubTool::with_kind(
+                            tool,
+                            *k,
+                            n,
+                            preset("size=10.0 tolerance=10.0 close_gap=2 mode=new"),
+                        )
+                    })
                     .collect(),
                 selected: 0,
             }]

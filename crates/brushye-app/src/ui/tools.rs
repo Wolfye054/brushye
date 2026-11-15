@@ -75,7 +75,7 @@ pub const TOOLS: &[ToolInfo] = &[
         "Auto select",
         icons::MAGIC_WAND,
         "W",
-        false,
+        true,
         false,
     ),
     t(
@@ -115,7 +115,7 @@ pub const TOOLS: &[ToolInfo] = &[
     t(ToolId::Eraser, "Eraser", icons::ERASER, "E", true, false),
     t(ToolId::Blend, "Blend", icons::DROP_HALF, "J", false, false),
     t(ToolId::Liquify, "Liquify", icons::WAVES, "J", false, false),
-    t(ToolId::Fill, "Fill", icons::PAINT_BUCKET, "G", false, true),
+    t(ToolId::Fill, "Fill", icons::PAINT_BUCKET, "G", true, true),
     t(
         ToolId::Gradient,
         "Gradient",

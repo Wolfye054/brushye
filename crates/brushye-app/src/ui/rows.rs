@@ -4,6 +4,7 @@
 
 use brushye_command::brush_preset::BrushPreset;
 use brushye_command::core::brush::{Aa, Gap, InkMode, TipAxis};
+use brushye_command::tools::SubKind;
 use eframe::egui::{self, Rect, Response, Sense, Stroke, Ui, pos2, vec2};
 
 use super::theme::Colors;
@@ -109,6 +110,13 @@ pub enum Row {
     SelectMode,
     AspectType,
     AdjustAngle,
+    // Fill and Auto select (F-001).
+    Connected,
+    CloseGap,
+    Tolerance,
+    AreaScaling,
+    ReferMultiple,
+    FillVectorPath,
 }
 
 pub struct RowInfo {
@@ -173,6 +181,60 @@ pub const ROWS: &[RowInfo] = &[
         0,
         false,
         "Rotate the shape after drawing it.",
+    ),
+    r(
+        Row::Connected,
+        "connected",
+        "Apply to connected pixels only",
+        SELECTION_CATEGORY,
+        0,
+        true,
+        "Fill only the area connected to the clicked point; off fills every similar colour.",
+    ),
+    r(
+        Row::CloseGap,
+        "close_gap",
+        "Close gap",
+        SELECTION_CATEGORY,
+        0,
+        true,
+        "Treat small gaps in lines as closed: level 1 holds 1 px gaps, 5 holds 20 px (F-001).",
+    ),
+    r(
+        Row::Tolerance,
+        "tolerance",
+        "Tolerance",
+        SELECTION_CATEGORY,
+        0,
+        true,
+        "How different a colour may be from the clicked one and still be filled.",
+    ),
+    r(
+        Row::AreaScaling,
+        "area_scaling",
+        "Area scaling",
+        SELECTION_CATEGORY,
+        0,
+        false,
+        "Grow or shrink the filled area.",
+    ),
+    r(
+        Row::ReferMultiple,
+        "refer_multiple",
+        "Refer multiple",
+        SELECTION_CATEGORY,
+        0,
+        false,
+        "Which layers the fill looks at: this sub tool reads the visible image or the editing layer.",
+    ),
+    r(
+        Row::FillVectorPath,
+        "fill_vector_path",
+        "Fill up to vector path",
+        SELECTION_CATEGORY,
+        0,
+        false,
+        "Stop at the centre of vector lines.",
     ),
     r(
         Row::BrushSize,
@@ -534,8 +596,8 @@ fn steps5(ui: &mut Ui, c: &Colors, value: u8, enabled: bool) -> Option<u8> {
     out
 }
 
-/// Draw one row for `preset`.
-pub fn draw(ui: &mut Ui, c: &Colors, row: Row, p: &mut BrushPreset) -> RowOut {
+/// Draw one row for `preset` (of a sub tool of kind `kind`).
+pub fn draw(ui: &mut Ui, c: &Colors, row: Row, kind: SubKind, p: &mut BrushPreset) -> RowOut {
     let i = info(row);
     let mut out = RowOut::default();
     let top = ui.cursor().top();
@@ -555,7 +617,7 @@ pub fn draw(ui: &mut Ui, c: &Colors, row: Row, p: &mut BrushPreset) -> RowOut {
     let resp = ui
         .horizontal(|ui| {
             ui.add_space(indent);
-            ui.vertical(|ui| draw_control(ui, c, i, p, &mut out))
+            ui.vertical(|ui| draw_control(ui, c, i, kind, p, &mut out))
                 .response
         })
         .response;
@@ -563,7 +625,14 @@ pub fn draw(ui: &mut Ui, c: &Colors, row: Row, p: &mut BrushPreset) -> RowOut {
     out
 }
 
-fn draw_control(ui: &mut Ui, c: &Colors, i: &RowInfo, p: &mut BrushPreset, out: &mut RowOut) {
+fn draw_control(
+    ui: &mut Ui,
+    c: &Colors,
+    i: &RowInfo,
+    kind: SubKind,
+    p: &mut BrushPreset,
+    out: &mut RowOut,
+) {
     let en = i.enabled;
     match i.row {
         Row::BrushSize => {
@@ -788,6 +857,49 @@ fn draw_control(ui: &mut Ui, c: &Colors, i: &RowInfo, p: &mut BrushPreset, out: 
                     out.changed = true;
                 }
             });
+        }
+        Row::Connected => {
+            let mut v = p.connected.unwrap_or(true);
+            if widgets::prop_check(ui, c, i.label, false, en, &mut v) {
+                p.connected = (!v).then_some(false);
+                out.changed = true;
+            }
+        }
+        Row::CloseGap => {
+            // A checkbox and the five-step bar (U-016-style, F-001); level 0 = off.
+            let level = p.close_gap.unwrap_or(0);
+            ui.horizontal(|ui| {
+                let mut on = level > 0;
+                ui.allocate_ui(vec2(ui.available_width() * 0.45, 27.0), |ui| {
+                    if widgets::prop_check(ui, c, i.label, false, en, &mut on) {
+                        p.close_gap = Some(if on { 2 } else { 0 });
+                        out.changed = true;
+                    }
+                });
+                ui.spacing_mut().item_spacing.x = 0.0;
+                if let Some(v) = steps5(ui, c, level, en && level > 0) {
+                    p.close_gap = Some(v);
+                    out.changed = true;
+                }
+            });
+        }
+        Row::Tolerance => {
+            let mut v = p.tolerance.unwrap_or(10.0);
+            if widgets::prop_slider(ui, c, i.label, &mut v, 0.0..=100.0, false, 1, None).0 {
+                p.tolerance = Some((v * 10.0).round() / 10.0);
+                out.changed = true;
+            }
+        }
+        Row::ReferMultiple => {
+            let mut v =
+                kind.fill_reads_all() == Some(true) || matches!(kind, SubKind::AutoReferred);
+            widgets::prop_check(ui, c, i.label, true, false, &mut v);
+        }
+        Row::AreaScaling => {
+            widgets::prop_check(ui, c, i.label, true, false, &mut false);
+        }
+        Row::FillVectorPath => {
+            widgets::prop_check(ui, c, i.label, false, false, &mut false);
         }
         Row::AspectType | Row::AdjustAngle => {
             widgets::prop_check(ui, c, i.label, false, false, &mut false);

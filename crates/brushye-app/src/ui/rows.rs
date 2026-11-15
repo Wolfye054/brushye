@@ -215,8 +215,8 @@ pub const ROWS: &[RowInfo] = &[
         "Area scaling",
         SELECTION_CATEGORY,
         0,
-        false,
-        "Grow or shrink the filled area.",
+        true,
+        "Grow or shrink the filled area by this many pixels (Rectangle or Round; To darkest pixel is not available yet).",
     ),
     r(
         Row::ReferMultiple,
@@ -896,7 +896,40 @@ fn draw_control(
             widgets::prop_check(ui, c, i.label, true, false, &mut v);
         }
         Row::AreaScaling => {
-            widgets::prop_check(ui, c, i.label, true, false, &mut false);
+            use brushye_command::core::fill::ScaleMode;
+            let mut on = p.scale.is_some_and(|v| v != 0);
+            if widgets::prop_check(ui, c, i.label, true, en, &mut on) {
+                p.scale = on.then_some(10);
+                if on && p.scale_mode.is_none_or(|m| m == ScaleMode::Darkest) {
+                    p.scale_mode = Some(ScaleMode::Rectangle);
+                }
+                out.changed = true;
+            }
+            if on {
+                let mut v = p.scale.unwrap_or(10) as f64;
+                if widgets::prop_slider(ui, c, "", &mut v, -100.0..=100.0, false, 0, None).0 {
+                    let v = v.round() as i64;
+                    p.scale = (v != 0).then_some(v);
+                    out.changed = true;
+                }
+                widgets::prop_row(ui, c, "Scaling mode", en, |ui| {
+                    let cells = [
+                        (icons::SQUARE, "Rectangle"),
+                        (icons::CIRCLE, "Round"),
+                        (icons::DROP_HALF, "To darkest pixel (not available yet)"),
+                    ];
+                    let cur = ScaleMode::ALL
+                        .iter()
+                        .position(|&m| m == p.scale_mode.unwrap_or(ScaleMode::Rectangle))
+                        .unwrap_or(0);
+                    if let Some(k) = widgets::segmented(ui, c, &cells, cur)
+                        && ScaleMode::ALL[k] != ScaleMode::Darkest
+                    {
+                        p.scale_mode = Some(ScaleMode::ALL[k]);
+                        out.changed = true;
+                    }
+                });
+            }
         }
         Row::FillVectorPath => {
             widgets::prop_check(ui, c, i.label, false, false, &mut false);

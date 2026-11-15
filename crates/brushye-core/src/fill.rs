@@ -14,10 +14,37 @@
 //!
 //! Not observed, chosen here: 4-connectivity; the gap closing itself (a box closing whose
 //! sizes reproduce the thresholds above; the fill's shape inside a closed gap is approximate).
-//! Area scaling is not implemented (F-001: rule open).
+//! - Area scaling (run 3): Rectangle / Round grow (N > 0) or shrink (N < 0) the region by the
+//!   square / the rounded kernel of S-001 run 5 (the canvas edge counts as outside), exact
+//!   without anti-aliasing; with it, CSP smooths curved edges of the grown area (not modelled:
+//!   the result here is the binary area, exact on straight edges). To darkest pixel: open.
 
 /// Box sizes of the Close gap levels 1–5: a gap of up to `k − 1` px is closed.
 const GAP_BOX: [usize; 5] = [2, 4, 6, 11, 21];
+
+/// Area scaling mode (Tool property > Area scaling > Scaling mode).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum ScaleMode {
+    Rectangle,
+    Round,
+    /// To darkest pixel (CSP's default): not implemented.
+    #[default]
+    Darkest,
+}
+
+impl ScaleMode {
+    pub const ALL: [ScaleMode; 3] = [Self::Rectangle, Self::Round, Self::Darkest];
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Rectangle => "rectangle",
+            Self::Round => "round",
+            Self::Darkest => "darkest",
+        }
+    }
+    pub fn from_name(s: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|m| m.name() == s)
+    }
+}
 
 /// Settings of one fill or auto-select click.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -30,6 +57,9 @@ pub struct FillParams {
     pub close_gap: u8,
     /// Anti-aliasing.
     pub aa: bool,
+    /// Area scaling in px (0 = off) and its mode.
+    pub scale: i32,
+    pub scale_mode: ScaleMode,
 }
 
 impl Default for FillParams {
@@ -39,6 +69,8 @@ impl Default for FillParams {
             connected: true,
             close_gap: 0,
             aa: true,
+            scale: 0,
+            scale_mode: ScaleMode::Darkest,
         }
     }
 }
@@ -85,6 +117,19 @@ pub fn coverage(reference: &[u8], w: u32, h: u32, x: u32, y: u32, p: &FillParams
         )
     };
     let mut out = vec![0u8; n];
+    if p.scale != 0 && p.scale_mode != ScaleMode::Darkest {
+        // Area scaling replaces the soft border: the binary region, grown or shrunk.
+        let v: Vec<u8> = region.iter().map(|&r| if r { 255 } else { 0 }).collect();
+        return crate::selection::morph(
+            &v,
+            w,
+            h,
+            p.scale.unsigned_abs(),
+            p.scale_mode == ScaleMode::Round,
+            p.scale > 0,
+            0,
+        );
+    }
     if !p.aa {
         for (o, &r) in out.iter_mut().zip(&region) {
             if r {

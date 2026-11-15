@@ -39,6 +39,8 @@ params! {
         tolerance: Option<f64> = opt "Fill / Auto select tolerance in percent",
         close_gap: Option<u8> = opt "Fill / Auto select Close gap level 0..=5",
         connected: Option<bool> = opt "Fill / Auto select: apply to connected pixels only",
+        scale: Option<i64> = opt "Fill / Auto select area scaling in px (0 = off)",
+        scale_mode: Option<brushye_core::fill::ScaleMode> = opt "Fill / Auto select scaling mode",
     }
 }
 
@@ -69,6 +71,8 @@ impl BrushPreset {
             tolerance: None,
             close_gap: None,
             connected: None,
+            scale: None,
+            scale_mode: None,
         }
     }
 

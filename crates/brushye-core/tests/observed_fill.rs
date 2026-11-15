@@ -4,7 +4,7 @@
 mod common;
 
 use brushye_core::brush::{InkMode, ink};
-use brushye_core::fill::{FillParams, apply_opacity, coverage};
+use brushye_core::fill::{FillParams, ScaleMode, apply_opacity, coverage};
 use common::Img;
 
 const W: u32 = 800;
@@ -34,6 +34,7 @@ fn params(t: f64, aa: bool) -> FillParams {
         connected: true,
         close_gap: 0,
         aa,
+        ..FillParams::default()
     }
 }
 
@@ -155,5 +156,50 @@ fn close_gap_thresholds() {
                 assert_eq!(leak(&got), leak(&want), "{input} level {level} gap {gap}");
             }
         }
+    }
+}
+
+/// Run 3: Area scaling, Rectangle and Round. Without anti-aliasing, exact (grown and shrunk);
+/// with it, exact away from the curved disk (CSP smooths curves; not modelled).
+#[test]
+fn area_scaling_rectangle_and_round() {
+    let scale = rgba("inputs/scale.png");
+    let outside_disk = |i: usize| {
+        let (x, y) = ((i % 800) as i64, (i / 800) as i64);
+        (x - 650).pow(2) + (y - 550).pow(2) >= 80 * 80
+    };
+    for (mode, name) in [(ScaleMode::Rectangle, "rect"), (ScaleMode::Round, "round")] {
+        for n in [1, 2, 3, 5, 10] {
+            for aa in [false, true] {
+                let p = FillParams {
+                    scale: n,
+                    scale_mode: mode,
+                    ..params(10.0, aa)
+                };
+                let got = coverage(&scale, W, H, 50, 50, &p);
+                let want = alpha(&format!(
+                    "run3/sc_{name}{n}_{}.png",
+                    if aa { "aa" } else { "no" }
+                ));
+                let bad = (0..640_000)
+                    .filter(|&i| got[i] != want[i] && (!aa || outside_disk(i)))
+                    .count();
+                assert_eq!(bad, 0, "{name} {n} aa={aa}");
+            }
+        }
+    }
+    let outlines = rgba("inputs/outlines.png");
+    for (mode, name) in [(ScaleMode::Rectangle, "rect"), (ScaleMode::Round, "round")] {
+        let p = FillParams {
+            scale: -3,
+            scale_mode: mode,
+            ..params(10.0, false)
+        };
+        let got = coverage(&outlines, W, H, 20, 20, &p);
+        assert_eq!(
+            diff(&got, &alpha(&format!("run3/ol_{name}-3_no.png"))),
+            0,
+            "{name} -3"
+        );
     }
 }

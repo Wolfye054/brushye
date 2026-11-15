@@ -783,6 +783,10 @@ impl Arg for Samples {
 }
 
 word_arg!(
+    brushye_core::fill::ScaleMode,
+    "scaling mode (rectangle|round|darkest)"
+);
+word_arg!(
     brushye_core::selection::LayerSelOp,
     "layer selection op (create|add|delete|overlap)"
 );

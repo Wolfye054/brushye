@@ -255,6 +255,8 @@ Auto select the area around a point.
 | `connected` | bool | optional `key=` | Apply to connected pixels only (default true) |
 | `close_gap` | u8 | optional `key=` | Close gap level 0 (off, default) ..= 5 |
 | `aa` | bool | optional `key=` | Anti-aliasing (default true) |
+| `scale` | i64 | optional `key=` | Area scaling in px (default 0 = off; negative shrinks) |
+| `scale_mode` | scaling mode (rectangle\|round\|darkest) | optional `key=` | Scaling mode: rectangle or round (darkest: not available yet) |
 | `refer` | reference (layer\|all) | optional `key=` | layer (default) or all (the visible image) |
 | `mode` | selection mode (new\|add\|subtract\|intersect) | optional `key=` | new (default), add, subtract or intersect |
 
@@ -271,6 +273,8 @@ Fill the area around a point (Fill tool).
 | `connected` | bool | optional `key=` | Apply to connected pixels only (default true) |
 | `close_gap` | u8 | optional `key=` | Close gap level 0 (off, default) ..= 5 |
 | `aa` | bool | optional `key=` | Anti-aliasing (default true) |
+| `scale` | i64 | optional `key=` | Area scaling in px (default 0 = off; negative shrinks) |
+| `scale_mode` | scaling mode (rectangle\|round\|darkest) | optional `key=` | Scaling mode: rectangle or round (darkest: not available yet) |
 | `opacity` | u8 | optional `key=` | Opacity in percent (default 100) |
 | `refer` | reference (layer\|all) | optional `key=` | layer (default: the layer itself) or all (the visible image) |
 
@@ -376,6 +380,8 @@ Change a sub tool's name or settings.
 | `tolerance` | f64 | optional `key=` | Fill / Auto select tolerance in percent |
 | `close_gap` | u8 | optional `key=` | Fill / Auto select Close gap level 0..=5 |
 | `connected` | bool | optional `key=` | Fill / Auto select: apply to connected pixels only |
+| `scale` | i64 | optional `key=` | Fill / Auto select area scaling in px (0 = off) |
+| `scale_mode` | scaling mode (rectangle\|round\|darkest) | optional `key=` | Fill / Auto select scaling mode |
 | `clear` | string | optional `key=` | Comma-separated settings to turn off (not size) |
 
 ### `subtool.add` (v1, tool)

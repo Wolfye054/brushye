@@ -161,6 +161,11 @@ on `scale`, (20, 20) on `outlines`); every setting checked on a screenshot.
   neighbours stay 0: 184 ring pixels at t = 0), and at t ≥ 50 only region pixels with a
   4-neighbour outside it (the gray ramp has none, so it stays 255). With these two, every
   export in runs 1–2 is reproduced exactly.
+- Area scaling Rectangle / Round (`scale=`, `scale_mode=`): the binary region grown or shrunk
+  with the selection morphology (square, rounded kernel), exact without anti-aliasing and on
+  straight edges with it; the smoothing of curved edges is not modelled. To darkest pixel
+  gives an error until its rule is known. CSP's default for Refer other layers / Refer to all
+  layers is To darkest pixel 10, so Brushye's defaults for those sub tools keep scaling off.
 - Chosen, not observed: 4-connectivity of the region; Close gap as a box closing with boxes
   2, 4, 6, 11, 21 px (reproduces every hold/leak outcome; the fill's shape inside a closed
   gap is approximate); a fill inside a selection is clipped like a stroke.

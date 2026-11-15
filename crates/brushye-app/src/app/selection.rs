@@ -663,6 +663,8 @@ impl App {
                 connected: p.connected,
                 close_gap: p.close_gap,
                 aa,
+                scale: p.scale,
+                scale_mode: p.scale_mode,
                 opacity: p.opacity,
                 refer,
             })
@@ -675,6 +677,8 @@ impl App {
                 connected: p.connected,
                 close_gap: p.close_gap,
                 aa,
+                scale: p.scale,
+                scale_mode: p.scale_mode,
                 refer,
                 mode: p.mode,
             })

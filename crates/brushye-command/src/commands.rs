@@ -392,6 +392,8 @@ params! {
         connected: Option<bool> = opt "Apply to connected pixels only (default true)",
         close_gap: Option<u8> = opt "Close gap level 0 (off, default) ..= 5",
         aa: Option<bool> = opt "Anti-aliasing (default true)",
+        scale: Option<i64> = opt "Area scaling in px (default 0 = off; negative shrinks)",
+        scale_mode: Option<brushye_core::fill::ScaleMode> = opt "Scaling mode: rectangle or round (darkest: not available yet)",
         opacity: Option<u8> = opt "Opacity in percent (default 100)",
         refer: Option<FillRef> = opt "layer (default: the layer itself) or all (the visible image)",
     }
@@ -406,6 +408,8 @@ params! {
         connected: Option<bool> = opt "Apply to connected pixels only (default true)",
         close_gap: Option<u8> = opt "Close gap level 0 (off, default) ..= 5",
         aa: Option<bool> = opt "Anti-aliasing (default true)",
+        scale: Option<i64> = opt "Area scaling in px (default 0 = off; negative shrinks)",
+        scale_mode: Option<brushye_core::fill::ScaleMode> = opt "Scaling mode: rectangle or round (darkest: not available yet)",
         refer: Option<FillRef> = opt "layer (default) or all (the visible image)",
         mode: Option<SelectMode> = opt "new (default), add, subtract or intersect",
     }
@@ -515,6 +519,8 @@ params! {
         tolerance: Option<f64> = opt "Fill / Auto select tolerance in percent",
         close_gap: Option<u8> = opt "Fill / Auto select Close gap level 0..=5",
         connected: Option<bool> = opt "Fill / Auto select: apply to connected pixels only",
+        scale: Option<i64> = opt "Fill / Auto select area scaling in px (0 = off)",
+        scale_mode: Option<brushye_core::fill::ScaleMode> = opt "Fill / Auto select scaling mode",
         clear: Option<String> = opt "Comma-separated settings to turn off (not size)",
     }
 }

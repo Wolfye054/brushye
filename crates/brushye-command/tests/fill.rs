@@ -125,3 +125,30 @@ fn close_gap_and_auto_select() {
     let h = |s: &Session| s.document().map(|d| d.content_hash());
     assert_eq!(h(&r), h(&s));
 }
+
+#[test]
+fn area_scaling() {
+    let mut s = Session::new();
+    run(&mut s, SETUP);
+    sides(&mut s);
+    // Inside the square (11..29 is white): grow by 2 px covers the 1 px outline and one more.
+    run(
+        &mut s,
+        "fill.area L2 x=20 y=20 color=#ff0000 refer=all aa=false scale=2 scale_mode=rectangle",
+    );
+    assert_eq!(q(&mut s, "?layer.pixel L2 x=10 y=20")[3], 255);
+    assert_eq!(q(&mut s, "?layer.pixel L2 x=9 y=20")[3], 255);
+    assert_eq!(q(&mut s, "?layer.pixel L2 x=8 y=20")[3], 0);
+    // Shrink by 3 px.
+    run(
+        &mut s,
+        "history.undo\nfill.area L2 x=20 y=20 color=#ff0000 refer=all aa=false scale=-3 scale_mode=round",
+    );
+    assert_eq!(q(&mut s, "?layer.pixel L2 x=13 y=20")[3], 0);
+    assert_eq!(q(&mut s, "?layer.pixel L2 x=14 y=20")[3], 255);
+    // To darkest pixel isn't implemented: a clear error, nothing changes.
+    assert!(
+        s.run_line("fill.area L2 x=20 y=20 color=#ff0000 scale=10 scale_mode=darkest")
+            .is_err()
+    );
+}

@@ -387,6 +387,8 @@ fn map(name: &str, row: &Row) -> Result<SubTool, SutError> {
         tolerance: None,
         close_gap: None,
         connected: None,
+        scale: None,
+        scale_mode: None,
     };
     notes.extend(unmapped(row));
     preset

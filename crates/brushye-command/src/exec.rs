@@ -1107,7 +1107,14 @@ fn edit(d: &mut Document, cmd: &Command, pressure_curve: &Curve) -> Result<(), E
                     "fill.area: color must be opaque (#rrggbb)".into(),
                 ));
             }
-            let fp = fill_params(p.tolerance, p.connected, p.close_gap, p.aa)?;
+            let fp = fill_params(
+                p.tolerance,
+                p.connected,
+                p.close_gap,
+                p.aa,
+                p.scale,
+                p.scale_mode,
+            )?;
             let (w, h) = (d.width, d.height);
             in_canvas(d, p.x, p.y)?;
             let reference = fill_reference(d, p.layer, p.refer)?;
@@ -1143,7 +1150,14 @@ fn edit(d: &mut Document, cmd: &Command, pressure_curve: &Curve) -> Result<(), E
             l.tiles.prune();
         }
         Command::SelectAuto(p) => {
-            let fp = fill_params(p.tolerance, p.connected, p.close_gap, p.aa)?;
+            let fp = fill_params(
+                p.tolerance,
+                p.connected,
+                p.close_gap,
+                p.aa,
+                p.scale,
+                p.scale_mode,
+            )?;
             let (w, h) = (d.width, d.height);
             in_canvas(d, p.x, p.y)?;
             let reference = fill_reference(d, p.layer, p.refer)?;
@@ -1278,7 +1292,22 @@ fn fill_params(
     connected: Option<bool>,
     gap: Option<u8>,
     aa: Option<bool>,
+    scale: Option<i64>,
+    scale_mode: Option<brushye_core::fill::ScaleMode>,
 ) -> Result<brushye_core::fill::FillParams, ExecError> {
+    use brushye_core::fill::ScaleMode;
+    let scale = scale.unwrap_or(0);
+    if !(-500..=500).contains(&scale) {
+        return Err(ExecError(format!(
+            "area scaling {scale} is not in -500..=500"
+        )));
+    }
+    let mode = scale_mode.unwrap_or(ScaleMode::Rectangle);
+    if scale != 0 && mode == ScaleMode::Darkest {
+        return Err(ExecError(
+            "area scaling: To darkest pixel is not available yet (F-001: rule open)".into(),
+        ));
+    }
     let t = tolerance.unwrap_or(10.0);
     if !(0.0..=100.0).contains(&t) {
         return Err(ExecError(format!("tolerance {t} is not in 0..=100")));
@@ -1292,6 +1321,8 @@ fn fill_params(
         connected: connected.unwrap_or(true),
         close_gap: gap,
         aa: aa.unwrap_or(true),
+        scale: scale as i32,
+        scale_mode: mode,
     })
 }
 

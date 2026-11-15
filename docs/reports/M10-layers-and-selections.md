@@ -113,9 +113,7 @@ pinned down, the spec says so and Brushye's approximation is labelled as one.
     - Blur border and Selection from Layer
     - fill over existing pixels, and strokes inside a selection.
   - Command, replay and format tests for every new command. Golden `.brsh` v2, v3 and v4 files.
-- **CI** was green on Windows, macOS and Linux through S-001 run 4. The last two pushes
-  (rounded kernels; Blur border and Selection from Layer) were still running when this
-  was written.
+- **CI** is green on Windows, macOS and Linux for every M10 push, through this report.
 - **In the app** (Linux, automated on a private X display):
   - layer structure: the palette, drag and drop, masks
   - selections: rectangle and ellipse, Add mode, Fill, moving, the Selection pen, Deselect

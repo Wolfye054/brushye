@@ -1,6 +1,7 @@
 # F-001 Fill tool (and the flood fill shared with Auto select)
 - Status: **observed** (run 1: settings layout, tolerance metric, anti-aliasing, close gap;
-  open items below)
+  run 2: area scaling, connected off, opacity, editing-layer mixing, Auto select; open items
+  below)
 - CSP version: 1.13.2 (PRO, 64-bit, build 202301210208)
 - Date / method / observer: 2026-11-15 / automated-Wine (pen display :78, XTEST mouse) /
   Claude
@@ -85,13 +86,48 @@ With d the distance (as above) of a pixel to the clicked colour:
 - Clicking **outside** the squares at level 5 filled the whole canvas, lines included; not
   analysed further (Fill narrow areas is on by default).
 
+## Run 2 (2026-11-15, pen display :78)
+Same setup on `ring`, tolerance 10, click at canvas (400, 250); data in `data/run2/`.
+
+### Defaults and Area scaling
+- **Defaults of Refer other layers** (Close gap 2, Area scaling 10, Refer multiple, AA on):
+  `ring_default`. Identical to Area scaling 10 with Close gap off (`ring_as10`): no gaps here.
+- **Scaling mode** (⊕ beside Area scaling): three buttons, tooltips **Rectangle**, **Round**,
+  **To darkest pixel** (selected by default), and a ▾.
+- To darkest pixel, along row 400 into the ring line (black, x 600–603; the unscaled fill ends
+  at 599, `ring_as0`): +1 → 600; +3 and +10 → 601 (edge pixel 243 / 249): the fill stops in the
+  middle of the line. −3 shrinks to 596 (edge 231). `ring_as1`, `ring_as3`, `ring_as10`,
+  `ring_as-3`.
+- Rectangle and Round, 3 and 10 (`ring_rect*`, `ring_round*`): the fill grows by exactly
+  3 / 10 px straight across the line (599 → 602 / 609). The solid part equals the binary
+  dilation of the unscaled fill's solid part by the square / the rounded kernel of S-001
+  run 5 (0 pixels outside it), but ≈ 830 pixels that dilation calls solid come out partial: the
+  grown edge is anti-aliased again. **Open:** the exact rule for all three modes.
+
+### Apply to connected pixels only: off
+- `ring_unconnected`: every pixel with d ≤ T anywhere on the canvas gets 255 (outside the
+  ring too; the black disk stays empty); all 2 324 partial pixels follow the anti-aliasing
+  rule of run 1 (t < 50). Close gap greys out with it.
+
+### Ink
+- **Opacity 50** (Sub Tool Detail > Ink): the fill's alpha is **⌊a/2⌋** for every value a of
+  the 100 % fill (255 → 127; 15 levels, `ring_op50`). Other opacities: not run.
+- **Refer only to editing layer**, filling the ring layer itself (black on white,
+  `ring_editing`): same coverage a as Refer other layers, and the colour is the **Normal
+  composite**: round(I·(255 − a)/255) on all 16 value pairs; alpha stays 255.
+
+### Auto select
+- Auto select's **Refer to all layers** has the same defaults as Fill's Refer other layers
+  (Close gap 2, Area scaling ✓ 10, Refer multiple ✓) plus Selection mode first. Clicking the
+  same point and reading the selection out (Edit > Fill on the empty layer,
+  `autosel_default`) gives **exactly** the default fill's coverage, anti-aliased values
+  included (0 pixels differ from `ring_default`): Fill and Auto select share one region.
+
 ## Open questions
 - The general anti-aliasing rule (seed colours other than white; t ≥ 50 on the ramp).
 - Close gap: the level-5 bound between 20 and 24; how the closed gap is shaped; filling from
   outside with close gap; Fill narrow areas.
 - Straight vs premultiplied comparison; transparent pixels with different RGB.
-- Area scaling (pixels, Scaling mode), Apply to connected pixels only off, Refer only to
-  editing layer (paints on the referenced layer: how it mixes), Opacity and Blending mode,
-  Refer multiple / Exclude, Do not fill this color, Fill narrow areas, Enclose and fill, Paint
-  unfilled area.
-- Auto select: assumed to use the same region; the selection value at anti-aliased edges.
+- Area scaling: the exact rule for To darkest pixel, Rectangle and Round (data in run 2).
+- Opacity other than 50; Blending modes; Refer multiple / Exclude; Do not fill this color;
+  Fill narrow areas; Enclose and fill; Paint unfilled area; Auto select's other sub tools.

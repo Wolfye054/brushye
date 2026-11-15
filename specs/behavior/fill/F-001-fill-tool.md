@@ -1,7 +1,7 @@
 # F-001 Fill tool (and the flood fill shared with Auto select)
 - Status: **implemented** (2026-11-15: `fill.area`, `select.auto`, the Fill and Auto select
   tools; exact on every test in `crates/brushye-core/tests/observed_fill.rs`; not yet: Area
-  scaling, Enclose and fill, Paint unfilled area, Selection for referred layers) /
+  scaling (run 3: Rectangle/Round exact without anti-aliasing), Enclose and fill, Paint unfilled area, Selection for referred layers) /
   **observed** (run 1: settings layout, tolerance metric, anti-aliasing, close gap;
   run 2: area scaling, connected off, opacity, editing-layer mixing, Auto select; open items
   below)
@@ -126,6 +126,36 @@ Same setup on `ring`, tolerance 10, click at canvas (400, 250); data in `data/ru
   `autosel_default`) gives **exactly** the default fill's coverage, anti-aliased values
   included (0 pixels differ from `ring_default`): Fill and Auto select share one region.
 
+## Run 3 (2026-11-15, pen display :78): Area scaling
+Data in `data/run3/`; inputs `scale` and `outlines` (`tools/observe/make_fill_inputs.py`).
+Refer other layers, tolerance 10, Close gap off, clicked in the white outside (canvas (50, 50)
+on `scale`, (20, 20) on `outlines`); every setting checked on a screenshot.
+
+- **`scale`:** black bars 1, 2, 3, 4, 6, 9, 15 px wide, a 9 px valley bar (200 150 100 50 0 50 100
+  150 200), a black 60 px square and a black disk (r 50). All three modes at 1, 2, 3, 5, 10,
+  anti-aliasing on (`sc_<mode><n>_aa`) and off (`_no`), and unscaled (`sc_base_*`).
+  - **Anti-aliasing off: Rectangle N** = binary dilation of the unscaled fill by the
+    (2N+1)² square, **exact** at every N. **Round N** = dilation by **the rounded kernel of
+    S-001 run 5** (the selection Expand kernel), **exact** at every N (the disk
+    dx² + dy² < (N+1)² misses at N = 3).
+  - Bars reached from both sides are covered alike by all three modes.
+  - **Anti-aliasing on:** the solid area equals the anti-aliasing-off one except around the
+    disk (≈ 130–150 px), and ≈ 150–180 soft pixels appear there: the grown outline's
+    stair-steps on curves are smoothed. Straight edges are identical. **Open:** the smoothing
+    rule.
+- **`outlines`** (square outlines 1, 2, 3, 4, 6, 9, 15 px thick and a 9 px valley outline,
+  each reached from outside only), To darkest pixel at 1, 2, 3, 5, 10, −1, −3, Rectangle and
+  Round at −3 (`ol_*`):
+  - **Uniform black line, thickness t:** the fill grows **min(N, t − 1)** px into it, 1 px for
+    t = 1 (t = 2 → 1, 3 → 2, 4 → 3, 6 → 5, 9 → 8 at N = 10, 15 → 10).
+  - **Valley line:** it stops **at** the darkest pixel (200, 150, 100, 50, 0 covered, the
+    following 50 not), whatever N ≥ 5.
+  - With anti-aliasing on: the same depth, plus value **1** on the next pixel.
+  - **Negative N** shrinks the fill by |N| (−1 removes one pixel row along the edge, −3
+    three), in all three modes.
+  - The general rule behind To darkest pixel (ties in uniform runs, 2-D shapes) is
+    **open**; the observations above are 1-D cuts.
+
 ## Implementation notes (Brushye)
 - Anti-aliasing border: CSP softens only the **4-neighbours** of the region (diagonal
   neighbours stay 0: 184 ring pixels at t = 0), and at t ≥ 50 only region pixels with a
@@ -140,6 +170,8 @@ Same setup on `ring`, tolerance 10, click at canvas (400, 250); data in `data/ru
 - Close gap: the level-5 bound between 20 and 24; how the closed gap is shaped; filling from
   outside with close gap; Fill narrow areas.
 - Straight vs premultiplied comparison; transparent pixels with different RGB.
-- Area scaling: the exact rule for To darkest pixel, Rectangle and Round (data in run 2).
+- Area scaling: To darkest pixel's general rule (run 3 gives the 1-D behaviour); the
+  smoothing of curved edges with anti-aliasing on; Rectangle and Round with negative N in
+  2-D (erosion by the same kernels, expected).
 - Opacity other than 50; Blending modes; Refer multiple / Exclude; Do not fill this color;
   Fill narrow areas; Enclose and fill; Paint unfilled area; Auto select's other sub tools.

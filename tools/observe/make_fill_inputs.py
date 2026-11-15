@@ -45,3 +45,33 @@ def gap_image(name, gaps):
   save(name, img, img, img, 255)
 gap_image("gaps", [1, 2, 3, 4, 6, 8, 12, 16])
 gap_image("gaps2", [5, 7, 9, 10, 11, 20, 24, 32])
+
+# Area scaling (F-001 run 3): white with hard black vertical bars 1, 2, 3, 4, 6, 9, 15 px wide
+# (x from 100, 40 px apart, y 100–400), a 9 px bar with a valley profile
+# 200 150 100 50 0 50 100 150 200 at x = 480, a black 60×60 square at (600, 150) and a black
+# hard disk (r 50, centre-in test) at (650, 550).
+img = np.full((800, 800), 255, np.uint8)
+x = 100
+for wdt in [1, 2, 3, 4, 6, 9, 15]:
+    img[100:400, x:x + wdt] = 0
+    x += 40 + wdt
+for i, v in enumerate([200, 150, 100, 50, 0, 50, 100, 150, 200]):
+    img[100:400, 480 + i] = v
+img[150:210, 600:660] = 0
+yy, xx = np.mgrid[0:800, 0:800]
+img[(xx + 0.5 - 650) ** 2 + (yy + 0.5 - 550) ** 2 <= 50 ** 2] = 0
+save("scale", img, img, img, 255)
+
+# One-sided lines (F-001 run 3): square outlines (150 px) of thickness 1, 2, 3, 4, 6, 9, 15 and
+# a 9 px outline with the valley profile 200 … 0 … 200 across its thickness; clicked outside,
+# the fill grows into each outline from one side only.
+img = np.full((800, 800), 255, np.uint8)
+specs = [[0] * t for t in [1, 2, 3, 4, 6, 9, 15]] + [[200, 150, 100, 50, 0, 50, 100, 150, 200]]
+for i, prof in enumerate(specs):
+    x0, y0, s = 40 + (i % 4) * 190, 200 + (i // 4) * 260, 150
+    for k, v in enumerate(prof):
+        img[y0 + k, x0 + k:x0 + s - k] = v
+        img[y0 + s - 1 - k, x0 + k:x0 + s - k] = v
+        img[y0 + k:y0 + s - k, x0 + k] = v
+        img[y0 + k:y0 + s - k, x0 + s - 1 - k] = v
+save("outlines", img, img, img, 255)

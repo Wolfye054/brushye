@@ -399,6 +399,21 @@ params! {
     }
 }
 params! {
+    /// Enclose and fill: fill every region lying entirely inside a lasso (F-002).
+    pub struct FillEnclose {
+        layer: LayerId = pos "Layer to paint (and to read with refer=layer)",
+        points: Points = key "Lasso corners [x,y;…] in canvas pixels; the last joins the first",
+        color: Rgba8 = key "Colour #rrggbb",
+        target: Option<brushye_core::fill::EncloseTarget> = opt "Target color (default semi_as_transparent, CSP's default)",
+        tolerance: Option<f64> = opt "Tolerance in percent (default 30)",
+        aa: Option<bool> = opt "Anti-aliasing (default false)",
+        scale: Option<i64> = opt "Area scaling in px (default 10; 0 = off; negative shrinks)",
+        scale_mode: Option<brushye_core::fill::ScaleMode> = opt "Scaling mode (default darkest)",
+        opacity: Option<u8> = opt "Opacity in percent (default 100)",
+        refer: Option<FillRef> = opt "all (default: the visible image) or layer",
+    }
+}
+params! {
     /// Auto select: select the area around a canvas point (F-001; same area as the Fill tool).
     pub struct SelectAuto {
         layer: LayerId = pos "Layer to read with ref=layer",
@@ -521,6 +536,7 @@ params! {
         connected: Option<bool> = opt "Fill / Auto select: apply to connected pixels only",
         scale: Option<i64> = opt "Fill / Auto select area scaling in px (0 = off)",
         scale_mode: Option<brushye_core::fill::ScaleMode> = opt "Fill / Auto select scaling mode",
+        target: Option<brushye_core::fill::EncloseTarget> = opt "Enclose and fill target color",
         clear: Option<String> = opt "Comma-separated settings to turn off (not size)",
     }
 }
@@ -843,6 +859,7 @@ registry! {
         SelectBlur(SelectBlur) = "select.blur" v 1 Undoable "Blur the selection's border",
         SelectAuto(SelectAuto) = "select.auto" v 1 Undoable "Auto select the area around a point",
         FillArea(FillArea) = "fill.area" v 1 Undoable "Fill the area around a point (Fill tool)",
+        FillEnclose(FillEnclose) = "fill.enclose" v 1 Undoable "Fill the regions inside a lasso (Enclose and fill)",
         SelectFromLayer(SelectFromLayer) = "select.from_layer" v 1 Undoable "Selection from a layer's transparency",
         EditFill(EditFill) = "edit.fill" v 1 Undoable "Fill the selection (or layer) with a colour",
         EditDelete(EditDelete) = "edit.delete" v 1 Undoable "Clear the selection (or layer)",

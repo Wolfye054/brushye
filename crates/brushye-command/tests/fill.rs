@@ -166,3 +166,47 @@ fn refer_other_layers_defaults_to_darkest_pixel() {
         assert!(!txt.contains("darkest"), "{tool}: {txt}");
     }
 }
+
+#[test]
+fn enclose_and_fill() {
+    let mut s = Session::new();
+    run(&mut s, SETUP);
+    sides(&mut s);
+    // A lasso around the square: its outline and inside are regions wholly inside the lasso;
+    // the white background reaches past it (F-002).
+    run(
+        &mut s,
+        "fill.enclose L2 points=[5,5;45,5;45,35;5,35] color=#ff0000",
+    );
+    assert_eq!(
+        q(&mut s, "?layer.pixel L2 x=20 y=20"),
+        json!([255, 0, 0, 255])
+    );
+    assert_eq!(q(&mut s, "?layer.pixel L2 x=10 y=20")[3], 255, "outline");
+    assert_eq!(q(&mut s, "?layer.pixel L2 x=5 y=5")[3], 0, "background");
+    // Only black: the outline alone.
+    run(
+        &mut s,
+        "history.undo\nfill.enclose L2 points=[5,5;45,5;45,35;5,35] color=#ff0000 target=black",
+    );
+    assert_eq!(q(&mut s, "?layer.pixel L2 x=20 y=20")[3], 0);
+    assert_eq!(q(&mut s, "?layer.pixel L2 x=10 y=20")[3], 255);
+    // A lasso cutting the square fills nothing of it.
+    run(
+        &mut s,
+        "history.undo\nfill.enclose L2 points=[5,5;20,5;20,35;5,35] color=#ff0000",
+    );
+    assert_eq!(q(&mut s, "?layer.pixel L2 x=15 y=20")[3], 0);
+    // Errors.
+    assert!(
+        s.run_line("fill.enclose L2 points=[5,5;45,5] color=#ff0000")
+            .is_err()
+    );
+    assert!(
+        s.run_line("fill.enclose L2 points=[5,5;45,5;45,35] color=#ff0000 tolerance=120")
+            .is_err()
+    );
+    let r = Session::replay(&s.journal_text()).unwrap_or_else(|e| panic!("{}", e.msg));
+    let h = |s: &Session| s.document().map(|d| d.content_hash());
+    assert_eq!(h(&r), h(&s));
+}

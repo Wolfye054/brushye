@@ -1,5 +1,7 @@
 # F-002 Fill tool: Enclose and fill
-- Status: **observed** (run 1: settings, the region rule, Target color; open items below)
+- Status: **implemented** (2026-11-16: `fill.enclose`, the Enclose and fill sub tool;
+  exact on all 29 run 1 captures, `crates/brushye-core/tests/observed_enclose.rs`) /
+  **observed** (run 1: settings, the region rule, Target color; open items below)
 - CSP version: 1.13.2 (PRO, 64-bit, build 202301210208)
 - Date / method / observer: 2026-11-16 / automated-Wine (pen display :78, XTEST mouse) /
   Claude
@@ -92,6 +94,22 @@ with the transparent side, its solid core with the line.)
 - **With Area scaling** (To darkest pixel 10, the default), a selected region then grows by
   F-001's rule: transparent interiors grow 2 px into their 3 px black lines (t − 1), and
   E's interior 10 px into its gray square (0.75 of it). Everything else is unchanged.
+
+## Implementation notes (Brushye)
+- `brushye_core::fill::enclose` and the command `fill.enclose LAYER points=[x,y;…]
+  color=#rrggbb [target= tolerance= aa= scale= scale_mode= opacity= refer=]`; the command's
+  defaults are the sub tool's (Treat semi-transparent as transparent, tolerance 30, no
+  anti-aliasing, To darkest pixel 10, the visible image). The app draws a lasso with the
+  Enclose and fill sub tool and sends one `fill.enclose` on release; its Tool property has
+  the Target color row.
+- Regions are 4-connected. "Inside the lasso" is a pixel's centre inside the polygon
+  (even-odd). Area scaling and its smoothing are F-001's.
+- Chosen, not observed (exact on run 1 regardless): with tolerance T = round(2.55·t),
+  transparent = alpha ≤ T, black = alpha ≥ 255 − T with R, G, B ≤ T, white = alpha ≥
+  255 − T with R, G, B ≥ 255 − T; for the four "all" options a pixel joins a region when
+  every channel is within T of the region's first pixel; the four "all" options behave
+  alike; Close gap has no effect; anti-aliasing without area scaling gives the binary
+  area.
 
 ## Open questions
 - What separates the four "all" options and the default ("semi-transparent" threshold;

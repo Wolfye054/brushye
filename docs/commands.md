@@ -278,6 +278,22 @@ Fill the area around a point (Fill tool).
 | `opacity` | u8 | optional `key=` | Opacity in percent (default 100) |
 | `refer` | reference (layer\|all) | optional `key=` | layer (default: the layer itself) or all (the visible image) |
 
+### `fill.enclose` (v1, undoable)
+Fill the regions inside a lasso (Enclose and fill).
+
+| Parameter | Kind | Form | Description |
+|---|---|---|---|
+| `layer` | layer id | positional | Layer to paint (and to read with refer=layer) |
+| `points` | points [x,y;…] | required `key=` | Lasso corners [x,y;…] in canvas pixels; the last joins the first |
+| `color` | colour | required `key=` | Colour #rrggbb |
+| `target` | target color (all\|transparent\|around_transparent\|black\|around_black\|white_transparent\|around_white_transparent\|semi_as_transparent\|enclosed_except_transparent\|enclosed_including_transparent) | optional `key=` | Target color (default semi_as_transparent, CSP's default) |
+| `tolerance` | f64 | optional `key=` | Tolerance in percent (default 30) |
+| `aa` | bool | optional `key=` | Anti-aliasing (default false) |
+| `scale` | i64 | optional `key=` | Area scaling in px (default 10; 0 = off; negative shrinks) |
+| `scale_mode` | scaling mode (rectangle\|round\|darkest) | optional `key=` | Scaling mode (default darkest) |
+| `opacity` | u8 | optional `key=` | Opacity in percent (default 100) |
+| `refer` | reference (layer\|all) | optional `key=` | all (default: the visible image) or layer |
+
 ### `select.from_layer` (v1, undoable)
 Selection from a layer's transparency.
 
@@ -382,6 +398,7 @@ Change a sub tool's name or settings.
 | `connected` | bool | optional `key=` | Fill / Auto select: apply to connected pixels only |
 | `scale` | i64 | optional `key=` | Fill / Auto select area scaling in px (0 = off) |
 | `scale_mode` | scaling mode (rectangle\|round\|darkest) | optional `key=` | Fill / Auto select scaling mode |
+| `target` | target color (all\|transparent\|around_transparent\|black\|around_black\|white_transparent\|around_white_transparent\|semi_as_transparent\|enclosed_except_transparent\|enclosed_including_transparent) | optional `key=` | Enclose and fill target color |
 | `clear` | string | optional `key=` | Comma-separated settings to turn off (not size) |
 
 ### `subtool.add` (v1, tool)

@@ -305,7 +305,16 @@ pub fn default_shown_kind(tool: Tool, kind: SubKind) -> Vec<String> {
         ],
         (_, SubKind::ShrinkSelection) => &[],
         // F-001: Tool property rows as in CSP 1.13.2.
-        (_, SubKind::FillEditing | SubKind::FillEnclose | SubKind::FillUnfilled) => &[
+        // F-002: Enclose and fill's Tool property.
+        (_, SubKind::FillEnclose) => &[
+            "target_color",
+            "close_gap",
+            "tolerance",
+            "area_scaling",
+            "refer_multiple",
+            "fill_vector_path",
+        ],
+        (_, SubKind::FillEditing | SubKind::FillUnfilled) => &[
             "connected",
             "close_gap",
             "tolerance",
@@ -493,10 +502,16 @@ pub fn default_set(tool: Tool) -> Option<ToolSet> {
                             *k,
                             n,
                             // Refer other layers: Area scaling, To darkest pixel 10 (F-001).
-                            preset(if *k == SubKind::FillOthers {
-                                "size=10.0 tolerance=10.0 close_gap=2 scale=10 scale_mode=darkest"
-                            } else {
-                                "size=10.0 tolerance=10.0 close_gap=2"
+                            // Enclose and fill: tolerance 30, Area scaling 10, no
+                            // anti-aliasing, Treat semi-transparent as transparent (F-002).
+                            preset(match *k {
+                                SubKind::FillOthers => {
+                                    "size=10.0 tolerance=10.0 close_gap=2 scale=10 scale_mode=darkest"
+                                }
+                                SubKind::FillEnclose => {
+                                    "size=10.0 tolerance=30.0 close_gap=2 scale=10 scale_mode=darkest aa=none target=semi_as_transparent"
+                                }
+                                _ => "size=10.0 tolerance=10.0 close_gap=2",
                             }),
                         )
                     })

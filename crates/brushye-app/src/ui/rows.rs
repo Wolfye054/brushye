@@ -117,6 +117,8 @@ pub enum Row {
     AreaScaling,
     ReferMultiple,
     FillVectorPath,
+    // Enclose and fill (F-002).
+    TargetColor,
 }
 
 pub struct RowInfo {
@@ -181,6 +183,15 @@ pub const ROWS: &[RowInfo] = &[
         0,
         false,
         "Rotate the shape after drawing it.",
+    ),
+    r(
+        Row::TargetColor,
+        "target_color",
+        "Target color",
+        SELECTION_CATEGORY,
+        0,
+        true,
+        "Which regions inside the lasso are filled: all, only a colour, or the areas a colour surrounds (F-002).",
     ),
     r(
         Row::Connected,
@@ -858,6 +869,23 @@ fn draw_control(
                 }
             });
         }
+        Row::TargetColor => {
+            use brushye_command::core::fill::EncloseTarget;
+            widgets::prop_row(ui, c, i.label, en, |ui| {
+                let cur = p.target.unwrap_or_default();
+                egui::ComboBox::from_id_salt(("target", ui.next_auto_id()))
+                    .width(ui.available_width() - 6.0)
+                    .selected_text(cur.label())
+                    .show_ui(ui, |ui| {
+                        for m in EncloseTarget::ALL {
+                            if ui.selectable_label(cur == m, m.label()).clicked() {
+                                p.target = Some(m);
+                                out.changed = true;
+                            }
+                        }
+                    });
+            });
+        }
         Row::Connected => {
             let mut v = p.connected.unwrap_or(true);
             if widgets::prop_check(ui, c, i.label, false, en, &mut v) {
@@ -891,8 +919,8 @@ fn draw_control(
             }
         }
         Row::ReferMultiple => {
-            let mut v =
-                kind.fill_reads_all() == Some(true) || matches!(kind, SubKind::AutoReferred);
+            let mut v = kind.fill_reads_all() == Some(true)
+                || matches!(kind, SubKind::AutoReferred | SubKind::FillEnclose);
             widgets::prop_check(ui, c, i.label, true, false, &mut v);
         }
         Row::AreaScaling => {

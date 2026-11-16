@@ -122,31 +122,7 @@ pub fn coverage(reference: &[u8], w: u32, h: u32, x: u32, y: u32, p: &FillParams
     };
     let mut out = vec![0u8; n];
     if p.scale != 0 {
-        // Area scaling replaces the soft border: the binary area grown or shrunk, then, with
-        // anti-aliasing, its outline smoothed (runs 5–6, `smooth`).
-        let scaled: Vec<bool> = if p.scale > 0 && p.scale_mode == ScaleMode::Darkest {
-            darkest_grow(reference, wu, hu, &region, p.scale.unsigned_abs())
-        } else {
-            // Rectangle, Round, and To darkest pixel shrinking (the square, run 3).
-            let v: Vec<u8> = region.iter().map(|&r| if r { 255 } else { 0 }).collect();
-            crate::selection::morph(
-                &v,
-                w,
-                h,
-                p.scale.unsigned_abs(),
-                p.scale_mode == ScaleMode::Round,
-                p.scale > 0,
-                0,
-            )
-            .iter()
-            .map(|&v| v > 0)
-            .collect()
-        };
-        return if p.aa {
-            crate::smooth::smooth_area(&scaled, w, h)
-        } else {
-            scaled.iter().map(|&r| if r { 255 } else { 0 }).collect()
-        };
+        return scaled_coverage(reference, w, h, &region, p.scale, p.scale_mode, p.aa);
     }
     if !p.aa {
         for (o, &r) in out.iter_mut().zip(&region) {
@@ -195,6 +171,266 @@ pub fn coverage(reference: &[u8], w: u32, h: u32, x: u32, y: u32, p: &FillParams
         }
     }
     out
+}
+
+/// Area scaling replaces the soft border: the binary area grown or shrunk, then, with
+/// anti-aliasing, its outline smoothed (F-001 runs 3–7, `smooth`).
+fn scaled_coverage(
+    reference: &[u8],
+    w: u32,
+    h: u32,
+    region: &[bool],
+    scale: i32,
+    mode: ScaleMode,
+    aa: bool,
+) -> Vec<u8> {
+    let scaled: Vec<bool> = if scale > 0 && mode == ScaleMode::Darkest {
+        darkest_grow(
+            reference,
+            w as usize,
+            h as usize,
+            region,
+            scale.unsigned_abs(),
+        )
+    } else {
+        // Rectangle, Round, and To darkest pixel shrinking (the square, run 3).
+        let v: Vec<u8> = region.iter().map(|&r| if r { 255 } else { 0 }).collect();
+        crate::selection::morph(
+            &v,
+            w,
+            h,
+            scale.unsigned_abs(),
+            mode == ScaleMode::Round,
+            scale > 0,
+            0,
+        )
+        .iter()
+        .map(|&v| v > 0)
+        .collect()
+    };
+    if aa {
+        crate::smooth::smooth_area(&scaled, w, h)
+    } else {
+        scaled.iter().map(|&r| if r { 255 } else { 0 }).collect()
+    }
+}
+
+/// Target color of Enclose and fill (F-002), in CSP's order.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum EncloseTarget {
+    /// Target all colors.
+    All,
+    /// Only transparent.
+    Transparent,
+    /// Area surrounded by transparent.
+    AroundTransparent,
+    /// Only black.
+    Black,
+    /// Area surrounded by black.
+    AroundBlack,
+    /// Only white and transparent.
+    WhiteTransparent,
+    /// Area surrounded by white and transparent.
+    AroundWhiteTransparent,
+    /// Treat semi-transparent as transparent (CSP's default).
+    #[default]
+    SemiAsTransparent,
+    /// All enclosed areas except transparency.
+    EnclosedExceptTransparent,
+    /// All enclosed areas including transparency.
+    EnclosedIncludingTransparent,
+}
+
+impl EncloseTarget {
+    pub const ALL: [EncloseTarget; 10] = [
+        Self::All,
+        Self::Transparent,
+        Self::AroundTransparent,
+        Self::Black,
+        Self::AroundBlack,
+        Self::WhiteTransparent,
+        Self::AroundWhiteTransparent,
+        Self::SemiAsTransparent,
+        Self::EnclosedExceptTransparent,
+        Self::EnclosedIncludingTransparent,
+    ];
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::All => "all",
+            Self::Transparent => "transparent",
+            Self::AroundTransparent => "around_transparent",
+            Self::Black => "black",
+            Self::AroundBlack => "around_black",
+            Self::WhiteTransparent => "white_transparent",
+            Self::AroundWhiteTransparent => "around_white_transparent",
+            Self::SemiAsTransparent => "semi_as_transparent",
+            Self::EnclosedExceptTransparent => "enclosed_except_transparent",
+            Self::EnclosedIncludingTransparent => "enclosed_including_transparent",
+        }
+    }
+    /// CSP's label.
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::All => "Target all colors",
+            Self::Transparent => "Only transparent",
+            Self::AroundTransparent => "Area surrounded by transparent",
+            Self::Black => "Only black",
+            Self::AroundBlack => "Area surrounded by black",
+            Self::WhiteTransparent => "Only white and transparent",
+            Self::AroundWhiteTransparent => "Area surrounded by white and transparent",
+            Self::SemiAsTransparent => "Treat semi-transparent as transparent",
+            Self::EnclosedExceptTransparent => "All enclosed areas except transparency",
+            Self::EnclosedIncludingTransparent => "All enclosed areas including transparency",
+        }
+    }
+    pub fn from_name(s: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|m| m.name() == s)
+    }
+}
+
+/// Settings of one Enclose and fill gesture (F-002).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct EncloseParams {
+    pub target: EncloseTarget,
+    /// Tolerance in percent (CSP's default 30).
+    pub tolerance: f64,
+    /// Anti-aliasing (CSP's default off).
+    pub aa: bool,
+    /// Area scaling in px (CSP's default 10, To darkest pixel).
+    pub scale: i32,
+    pub scale_mode: ScaleMode,
+}
+
+impl Default for EncloseParams {
+    fn default() -> Self {
+        Self {
+            target: EncloseTarget::default(),
+            tolerance: 30.0,
+            aa: false,
+            scale: 10,
+            scale_mode: ScaleMode::Darkest,
+        }
+    }
+}
+
+/// Pixels whose centre lies inside the closed polygon `pts` (even-odd).
+pub fn polygon_inside(pts: &[[f64; 2]], w: u32, h: u32) -> Vec<bool> {
+    let (wu, hu) = (w as usize, h as usize);
+    let mut out = vec![false; wu * hu];
+    let n = pts.len();
+    if n < 3 {
+        return out;
+    }
+    let mut xs = Vec::new();
+    for y in 0..hu {
+        let cy = y as f64 + 0.5;
+        xs.clear();
+        for i in 0..n {
+            let (a, b) = (pts[i], pts[(i + 1) % n]);
+            if (a[1] <= cy) != (b[1] <= cy) {
+                xs.push(a[0] + (cy - a[1]) * (b[0] - a[0]) / (b[1] - a[1]));
+            }
+        }
+        xs.sort_by(f64::total_cmp);
+        for pair in xs.as_chunks::<2>().0 {
+            // Pixel centres x + 0.5 in [pair[0], pair[1]).
+            let x0 = (pair[0] - 0.5).ceil().max(0.0) as usize;
+            let x1 = ((pair[1] - 0.5).ceil().max(0.0) as usize).min(wu);
+            for o in out[y * wu + x0.min(wu)..y * wu + x1].iter_mut() {
+                *o = true;
+            }
+        }
+    }
+    out
+}
+
+/// Enclose and fill (F-002 run 1): the area filled by a lasso `pts` (canvas pixels) on
+/// `reference` (straight RGBA). The image is divided into regions (4-connected); every region
+/// lying **entirely inside the lasso** is filled, outlines included, then grown by Area
+/// scaling. The regions, by Target color (tolerance threshold T = round(2.55·t)):
+/// - "Only X": regions of X pixels; "Area surrounded by X": regions of the other pixels;
+///   transparent = alpha ≤ T, black = alpha ≥ 255 − T and R, G, B ≤ T, white = alpha ≥
+///   255 − T and R, G, B ≥ 255 − T (chosen: thresholds not observed; black at alpha 128 is
+///   not black, as observed);
+/// - the other four: regions of like colour (a pixel joins a region when within T of the
+///   region's first pixel, chosen); identical in run 1 (open: what separates them).
+///
+/// Not modelled (open): Close gap (it did not hold a 10 px gap in run 1), the reference
+/// options, anti-aliasing without scaling (binary).
+pub fn enclose(reference: &[u8], w: u32, h: u32, pts: &[[f64; 2]], p: &EncloseParams) -> Vec<u8> {
+    let (wu, hu) = (w as usize, h as usize);
+    let n = wu * hu;
+    if reference.len() < n * 4 {
+        return vec![0; n];
+    }
+    let inside = polygon_inside(pts, w, h);
+    let t = threshold(p.tolerance) as u8;
+    let px = |i: usize| -> [u8; 4] {
+        let mut q = [0u8; 4];
+        q.copy_from_slice(&reference[i * 4..i * 4 + 4]);
+        q
+    };
+    let transparent = |q: [u8; 4]| q[3] <= t;
+    let black = |q: [u8; 4]| q[3] >= 255 - t && q[..3].iter().all(|&c| c <= t);
+    let white = |q: [u8; 4]| q[3] >= 255 - t && q[..3].iter().all(|&c| c >= 255 - t);
+    use EncloseTarget as E;
+    // Which class a pixel belongs to (None: regions of like colour instead).
+    let class: Option<Box<dyn Fn(usize) -> bool>> = match p.target {
+        E::Transparent => Some(Box::new(move |i| transparent(px(i)))),
+        E::AroundTransparent => Some(Box::new(move |i| !transparent(px(i)))),
+        E::Black => Some(Box::new(move |i| black(px(i)))),
+        E::AroundBlack => Some(Box::new(move |i| !black(px(i)))),
+        E::WhiteTransparent => Some(Box::new(move |i| white(px(i)) || transparent(px(i)))),
+        E::AroundWhiteTransparent => Some(Box::new(move |i| !(white(px(i)) || transparent(px(i))))),
+        _ => None,
+    };
+    let member = |i: usize| class.as_ref().is_none_or(|c| c(i));
+    let mut seen = vec![false; n];
+    let mut region = vec![false; n];
+    let mut stack = Vec::new();
+    let mut comp = Vec::new();
+    for s in 0..n {
+        if seen[s] || !inside[s] || !member(s) {
+            continue;
+        }
+        let seed = px(s);
+        let like = |i: usize| {
+            if class.is_some() {
+                member(i)
+            } else {
+                px(i).iter().zip(&seed).all(|(a, b)| a.abs_diff(*b) <= t)
+            }
+        };
+        comp.clear();
+        stack.push(s);
+        seen[s] = true;
+        let mut enclosed = true;
+        while let Some(i) = stack.pop() {
+            comp.push(i);
+            enclosed &= inside[i];
+            let (x, y) = (i % wu, i / wu);
+            for (ok, j) in [
+                (x > 0, i.wrapping_sub(1)),
+                (x + 1 < wu, i + 1),
+                (y > 0, i.wrapping_sub(wu)),
+                (y + 1 < hu, i + wu),
+            ] {
+                if ok && !seen[j] && like(j) {
+                    seen[j] = true;
+                    stack.push(j);
+                }
+            }
+        }
+        if enclosed {
+            for &i in &comp {
+                region[i] = true;
+            }
+        }
+    }
+    if p.scale != 0 {
+        return scaled_coverage(reference, w, h, &region, p.scale, p.scale_mode, p.aa);
+    }
+    region.iter().map(|&r| if r { 255 } else { 0 }).collect()
 }
 
 /// Coverage with an opacity in percent: `⌊a·o/100⌋`.

@@ -1125,29 +1125,46 @@ fn edit(d: &mut Document, cmd: &Command, pressure_curve: &Curve) -> Result<(), E
                 }
                 brushye_core::fill::apply_opacity(&mut cov, o);
             }
-            let s = d.selection.as_ref().map(|s| s.to_dense(w, h));
-            let l = raster_target(d, p.layer)?;
-            let rgb = [p.color.0[0], p.color.0[1], p.color.0[2]];
-            // Normal ink with the coverage as alpha (F-001 run 2, exact), clipped by the
-            // selection like strokes (not observed for fills).
-            for y in 0..h {
-                for x in 0..w {
-                    let i = (y * w + x) as usize;
-                    if cov[i] == 0 {
-                        continue;
-                    }
-                    let mut a = f64::from(cov[i]) / 255.0;
-                    if let Some(s) = &s {
-                        a *= f64::from(s[i]) / 255.0;
-                    }
-                    let dst = l.pixel(x, y);
-                    let out = ink::apply(InkMode::Normal, dst, rgb, a, l.lock_alpha);
-                    if out != dst {
-                        put_pixel(l, x, y, out);
-                    }
-                }
+            paint_coverage(d, p.layer, &cov, p.color)?;
+        }
+        Command::FillEnclose(p) => {
+            if p.color.0[3] != 255 {
+                return Err(ExecError(
+                    "fill.enclose: color must be opaque (#rrggbb)".into(),
+                ));
             }
-            l.tiles.prune();
+            if p.points.0.len() < 3 {
+                return Err(ExecError(
+                    "fill.enclose: a lasso needs at least 3 points".into(),
+                ));
+            }
+            let t = p.tolerance.unwrap_or(30.0);
+            if !(0.0..=100.0).contains(&t) {
+                return Err(ExecError(format!("tolerance {t} is not in 0..=100")));
+            }
+            let scale = p.scale.unwrap_or(10);
+            if !(-500..=500).contains(&scale) {
+                return Err(ExecError(format!(
+                    "area scaling {scale} is not in -500..=500"
+                )));
+            }
+            let ep = brushye_core::fill::EncloseParams {
+                target: p.target.unwrap_or_default(),
+                tolerance: t,
+                aa: p.aa.unwrap_or(false),
+                scale: scale as i32,
+                scale_mode: p.scale_mode.unwrap_or_default(),
+            };
+            let (w, h) = (d.width, d.height);
+            let reference = fill_reference(d, p.layer, Some(p.refer.unwrap_or(FillRef::All)))?;
+            let mut cov = brushye_core::fill::enclose(&reference, w, h, &p.points.0, &ep);
+            if let Some(o) = p.opacity {
+                if o > 100 {
+                    return Err(DocError::OpacityOutOfRange(u32::from(o)).into());
+                }
+                brushye_core::fill::apply_opacity(&mut cov, o);
+            }
+            paint_coverage(d, p.layer, &cov, p.color)?;
         }
         Command::SelectAuto(p) => {
             let fp = fill_params(
@@ -1324,6 +1341,39 @@ fn fill_params(
 
 /// The image a fill or auto-select click reads: one layer's own pixels, or the visible
 /// composite (with paper).
+/// Paint `color` onto a raster layer with `cov` as alpha: Normal ink (F-001 run 2, exact),
+/// clipped by the selection like strokes (not observed for fills).
+fn paint_coverage(
+    d: &mut Document,
+    layer: LayerId,
+    cov: &[u8],
+    color: brushye_core::Rgba8,
+) -> Result<(), ExecError> {
+    let (w, h) = (d.width, d.height);
+    let s = d.selection.as_ref().map(|s| s.to_dense(w, h));
+    let l = raster_target(d, layer)?;
+    let rgb = [color.0[0], color.0[1], color.0[2]];
+    for y in 0..h {
+        for x in 0..w {
+            let i = (y * w + x) as usize;
+            if cov[i] == 0 {
+                continue;
+            }
+            let mut a = f64::from(cov[i]) / 255.0;
+            if let Some(s) = &s {
+                a *= f64::from(s[i]) / 255.0;
+            }
+            let dst = l.pixel(x, y);
+            let out = ink::apply(InkMode::Normal, dst, rgb, a, l.lock_alpha);
+            if out != dst {
+                put_pixel(l, x, y, out);
+            }
+        }
+    }
+    l.tiles.prune();
+    Ok(())
+}
+
 fn fill_reference(
     d: &Document,
     layer: LayerId,

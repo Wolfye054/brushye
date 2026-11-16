@@ -783,6 +783,10 @@ impl Arg for Samples {
 }
 
 word_arg!(
+    brushye_core::fill::EncloseTarget,
+    "target color (all|transparent|around_transparent|black|around_black|white_transparent|around_white_transparent|semi_as_transparent|enclosed_except_transparent|enclosed_including_transparent)"
+);
+word_arg!(
     brushye_core::fill::ScaleMode,
     "scaling mode (rectangle|round|darkest)"
 );

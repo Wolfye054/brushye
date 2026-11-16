@@ -3,7 +3,8 @@
   tools; exact on every test in `crates/brushye-core/tests/observed_fill.rs`, Area scaling
   in all three modes exact without anti-aliasing; 2026-11-16: the anti-aliased smoothing of
   scaled areas (`brushye_core::smooth`), close to CSP with the differences recorded per
-  capture; not yet: Enclose and fill, Paint unfilled area, Selection for referred layers) /
+  capture; 2026-11-16: Enclose and fill (spec F-002); not yet: Paint unfilled area,
+  Selection for referred layers) /
   **observed** (run 1: settings layout, tolerance metric, anti-aliasing, close gap;
   run 2: area scaling, connected off, opacity, editing-layer mixing, Auto select;
   run 3: Area scaling modes; run 4: To darkest pixel's rule; runs 5–7: the anti-aliased

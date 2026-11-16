@@ -41,6 +41,7 @@ params! {
         connected: Option<bool> = opt "Fill / Auto select: apply to connected pixels only",
         scale: Option<i64> = opt "Fill / Auto select area scaling in px (0 = off)",
         scale_mode: Option<brushye_core::fill::ScaleMode> = opt "Fill / Auto select scaling mode",
+        target: Option<brushye_core::fill::EncloseTarget> = opt "Enclose and fill target color",
     }
 }
 
@@ -73,6 +74,7 @@ impl BrushPreset {
             connected: None,
             scale: None,
             scale_mode: None,
+            target: None,
         }
     }
 

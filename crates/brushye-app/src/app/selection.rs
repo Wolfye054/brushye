@@ -200,7 +200,7 @@ impl App {
         let c = self.to_canvas(pos);
         if let Some(g) = self.sel.as_mut() {
             g.cur = c;
-            if g.kind == SubKind::Lasso
+            if matches!(g.kind, SubKind::Lasso | SubKind::FillEnclose)
                 && g.points
                     .last()
                     .is_none_or(|p| (p[0] - c[0]).hypot(p[1] - c[1]) >= 1.0)
@@ -263,6 +263,14 @@ impl App {
                     })
                 };
                 self.exec(cmd);
+            }
+            SubKind::FillEnclose if g.points.len() >= 3 => {
+                let points = g
+                    .points
+                    .iter()
+                    .map(|p| [round(p[0]), round(p[1])])
+                    .collect();
+                self.enclose_fill(Points(points));
             }
             SubKind::Lasso if g.points.len() >= 3 => {
                 let points = g
@@ -392,7 +400,7 @@ impl App {
                     };
                     ants(&painter, &pts);
                 }
-                SubKind::Lasso => {
+                SubKind::Lasso | SubKind::FillEnclose => {
                     let pts: Vec<Pos2> = g.points.iter().map(|&p| self.screen(p)).collect();
                     ants(&painter, &pts);
                 }
@@ -614,6 +622,45 @@ impl App {
 }
 
 impl App {
+    /// The end of an Enclose and fill lasso: one `fill.enclose` with the sub tool's settings.
+    fn enclose_fill(&mut self, points: Points) {
+        let Some(sub) = self
+            .ui
+            .tools
+            .sets
+            .get(&ToolId::Fill)
+            .and_then(|s| s.current())
+            .cloned()
+        else {
+            return;
+        };
+        let Some(layer) = self.session.active_layer() else {
+            self.status = "Select a layer".into();
+            return;
+        };
+        let Some(rgb) = self.ui.colour.drawing() else {
+            self.status = "Fill with the transparent colour is not available yet".into();
+            return;
+        };
+        let p = &sub.preset;
+        let cmd = Command::FillEnclose(commands::FillEnclose {
+            layer,
+            points,
+            color: brushye_command::core::Rgba8([rgb[0], rgb[1], rgb[2], 255]),
+            target: p.target,
+            tolerance: p.tolerance,
+            aa: Some(p.aa.is_some_and(|a| a != Aa::None)),
+            // Area scaling off leaves no value in the preset; the command's default is 10.
+            scale: Some(p.scale.unwrap_or(0)),
+            scale_mode: p.scale_mode,
+            opacity: p.opacity,
+            refer: Some(commands::FillRef::All),
+        });
+        if self.exec(cmd) {
+            self.ui.colour.used();
+        }
+    }
+
     /// A click with the Fill or Auto select tool (F-001): one `fill.area` or `select.auto`.
     pub(super) fn fill_press(&mut self, pos: Pos2) {
         let tool = self.ui.tools.tool;
@@ -627,6 +674,20 @@ impl App {
         else {
             return;
         };
+        if sub.kind == SubKind::FillEnclose {
+            // Enclose and fill: draw a lasso; the release fills (F-002).
+            let c = self.to_canvas(pos);
+            self.sel = Some(Gesture {
+                kind: SubKind::FillEnclose,
+                mode: SelectMode::New,
+                aa: false,
+                start: c,
+                cur: c,
+                points: vec![c],
+                moving: false,
+            });
+            return;
+        }
         let Some(reads_all) = sub.kind.fill_reads_all() else {
             self.status = format!("“{}” is not available yet", sub.name);
             return;

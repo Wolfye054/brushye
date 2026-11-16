@@ -149,3 +149,36 @@ rgba_profile_image("dk5", [([k(255), k(255)], T0), ([k(128), k(255)], T0),
 # [gray g, black α128] for g = 126, 127, 129, 130 and [black α128, gray g] for g = 126..129.
 rgba_profile_image("dk6", [([gray(g), k(128)], T0) for g in [126, 127, 129, 130]]
                    + [([k(128), gray(g)], T0) for g in [126, 127, 128, 129]], T0)
+
+# Anti-aliased smoothing of scaled areas (F-001 run 5), `sm1`: black shapes on white, the fill
+# clicked in the white and grown into them. Row 1–2: right triangles whose hypotenuse has slope
+# 1, 1/2, 1/3, 1/4, 1/5, 1/8, 2/3, 3/4, 2/5, 0.37 (cells 150 px). Row 3: 140×60 rectangles with,
+# on their top side, a single step of 1, 2, 3 px, a 1 px notch 1, 3, 6 px wide, a 2 px bump 3
+# and 6 px wide. Row 4: squares 1–5 px and disks r 3, 5, 8, 12.
+img = np.full((800, 800), 255, np.uint8)
+yy, xx = np.mgrid[0:800, 0:800]
+slopes = [(1, 1), (1, 2), (1, 3), (1, 4), (1, 5), (1, 8), (2, 3), (3, 4), (2, 5), (37, 100)]
+for i, (a, b) in enumerate(slopes):
+    x0, y0 = 30 + (i % 5) * 150, 30 + (i // 5) * 160
+    w = 130
+    h = w * a // b
+    for x in range(w):
+        top = y0 + 140 - (x * a) // b - 1   # hypotenuse rises to the right
+        img[top:y0 + 140, x0 + x] = 0
+cells = [("step", 1), ("step", 2), ("step", 3), ("notch", 1), ("notch", 3), ("notch", 6),
+         ("bump", 3), ("bump", 6)]
+for i, (kind, s) in enumerate(cells):
+    x0, y0 = 20 + (i % 4) * 190, 380 + (i // 4) * 110
+    img[y0:y0 + 60, x0:x0 + 140] = 0
+    if kind == "step":
+        img[y0:y0 + s, x0 + 70:x0 + 140] = 255
+    elif kind == "notch":
+        img[y0:y0 + 1, x0 + 70 - s // 2:x0 + 70 - s // 2 + s] = 255
+    else:
+        img[y0 - 2:y0, x0 + 70 - s // 2:x0 + 70 - s // 2 + s] = 0
+for i, s in enumerate([1, 2, 3, 4, 5]):
+    img[640:640 + s, 40 + i * 40:40 + i * 40 + s] = 0
+for i, r in enumerate([3, 5, 8, 12]):
+    cx, cy = 300 + i * 120, 680
+    img[(xx + 0.5 - cx) ** 2 + (yy + 0.5 - cy) ** 2 <= r * r] = 0
+save("sm1", img, img, img, 255)

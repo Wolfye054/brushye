@@ -5,7 +5,8 @@
   scaled outlines, Enclose and fill, Paint unfilled area, Selection for referred layers) /
   **observed** (run 1: settings layout, tolerance metric, anti-aliasing, close gap;
   run 2: area scaling, connected off, opacity, editing-layer mixing, Auto select;
-  run 3: Area scaling modes; run 4: To darkest pixel's rule; open items below)
+  run 3: Area scaling modes; run 4: To darkest pixel's rule; run 5: the anti-aliased
+  smoothing of scaled areas, partly; open items below)
 - CSP version: 1.13.2 (PRO, 64-bit, build 202301210208)
 - Date / method / observer: 2026-11-15 / automated-Wine (pen display :78, XTEST mouse) /
   Claude
@@ -209,6 +210,50 @@ outside), Scaling mode To darkest pixel, every Area scaling value checked on a s
   (N ≥ 12) at the middle; the diamond's corners become 45° anti-aliased steps (239 207 175
   143 at N = 10). **Open:** the smoothing rule (the same as run 3's curve smoothing?).
 
+## Run 5 (2026-11-15, pen display :78): anti-aliased smoothing of scaled areas
+Data in `data/run5/`; input `sm1` (`tools/observe/make_fill_inputs.py`): black shapes on white,
+the fill clicked in the white at canvas (20, 20) and grown into them; Refer other layers,
+tolerance 10, Close gap off. Shapes: right triangles whose hypotenuse is a staircase of slope
+1, 1/2, 1/3, 1/4, 1/5, 1/8, 2/3, 3/4, 2/5, 0.37; 140×60 rectangles with, on the top side, one
+step of 1, 2, 3 px, a 1 px notch 1, 3, 6 px wide, a 2 px bump 3, 6 px wide; squares 1–5 px;
+disks r 3, 5, 8, 12. Captures, anti-aliasing on (`_aa`) and off (`_no`): Rectangle 1, 3, −1,
+−3, 10; Round 1, 3; To darkest pixel 1, 3, −1, −3, 10; plus unscaled (`sm1_<mode><N>_<aa>`).
+Analysis: `tools/observe/analyze_fill_smoothing.py`.
+- **The smoothing depends only on the binary area.** Where two captures have the same
+  anti-aliasing-off area (Rectangle 1 / Round 1, Rectangle 3 / Round 3, Rectangle −1 /
+  To darkest pixel −1, Rectangle −3 / To darkest pixel −3), their anti-aliased results are
+  identical (0 pixels). Anti-aliasing on, thresholded at 128, gives the anti-aliasing-off
+  area (≤ 5 pixels differ per capture). It applies to growing and to shrinking.
+- **Staircases (exact):** the anti-aliased edge is the exact area coverage, round(255·c), of
+  the straight line through the **midpoints of the outline's straight runs** (horizontal and
+  vertical runs of pixel edges). On the middle of the ten hypotenuses, in Rectangle 1, 3 and To
+  darkest pixel 1, 3, 2750 of 2802 soft pixels match: every slope, irregular ones (2/3, 3/4,
+  2/5, 0.37) included. Exceptions: slope 1/5 gives 152 where the exact value is 153.0 (CSP's
+  coverage arithmetic is a hair below exact; elsewhere round-half-up matches, 31.875 → 32,
+  223.125 → 223); slope 1/8 at N = 3 differs next to the triangle's corner (below). Values
+  seen: 45° 223/32 (7/8, 1/8), 1/2 191/64, 1/3 244 170 85 11.
+- **Long runs keep their corners.** Rectangle corners and the triangles' corners between
+  long legs stay sharp (no soft pixels), so the midpoint rule alone (which would cut every
+  corner) does not hold where long runs meet.
+- **Single features on a long edge become long straight ramps** ending at the midpoints of
+  the neighbouring long runs (Rectangle 1, rows as observed):
+  - a 1 px step between runs of 68 and 70 px: the edge stays straight from the rectangle's
+    corner (21, 381) to the left run's midpoint (55, 381), then one straight line through the
+    right run's midpoint (124, 382) continues to the rectangle's right side, meeting it at
+    (159, 382.5) (the soft values fall 125 → 2 across the right run);
+  - steps of 2 and 3 px: the same ramps on both sides, plus 45°-like transitions at the step
+    (64, 120/133; 85, 11/244, 101/133);
+  - a 3 px notch (1 px deep): ramps from both runs' midpoints rising to 127 at the notch,
+    159 159 inside it; notches 5 and 8 px wide: 143 207 207 143 and 135 167 199 231 231 199
+    167 135 inside;
+  - bumps: the same, mirrored (the bump pixels 64 / 191, 120; ramps 125 → 2 / 4).
+- **Hypotheses tried, not matching:** (a) the polygon through every run's midpoint: exact on
+  staircases, wrong at long-run corners (a square would become a diamond); (b) an optimal
+  polygon with vertex adjustment, following the published Potrace paper (Selinger 2003): with
+  either a half-pixel or a cone straightness test it takes the stepped top side as **one**
+  segment (CSP uses two, bending at the left run's midpoint), and it misses the notches and
+  bumps (136–204 pixels off per cell). The rule at long runs is **open**.
+
 ## Implementation notes (Brushye)
 - Anti-aliasing border: CSP softens only the **4-neighbours** of the region (diagonal
   neighbours stay 0: 184 ring pixels at t = 0), and at t ≥ 50 only region pixels with a
@@ -232,8 +277,9 @@ outside), Scaling mode To darkest pixel, every Area scaling value checked on a s
 - Close gap: the level-5 bound between 20 and 24; how the closed gap is shaped; filling from
   outside with close gap; Fill narrow areas.
 - Straight vs premultiplied comparison; transparent pixels with different RGB.
-- Area scaling: the anti-aliased smoothing of grown outlines (curves for Rectangle/Round,
-  run 3; sides and corners for To darkest pixel, run 4); Rectangle and Round with negative N
+- Area scaling: the anti-aliased smoothing where long runs meet (run 5: staircases are
+  exact; corners of long runs stay sharp; single steps, notches and bumps become ramps whose
+  vertex rule is unknown); Rectangle and Round with negative N
   in 2-D (erosion by the same kernels, expected); To darkest pixel's negative N on shapes
   where square and round shrinks differ; the field's bounds (20 in To darkest pixel mode);
   luma rounding (colours whose 8-bit luma ties); the canvas edge in To darkest pixel.

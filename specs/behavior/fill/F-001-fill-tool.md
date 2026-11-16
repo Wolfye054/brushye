@@ -5,8 +5,8 @@
   scaled outlines, Enclose and fill, Paint unfilled area, Selection for referred layers) /
   **observed** (run 1: settings layout, tolerance metric, anti-aliasing, close gap;
   run 2: area scaling, connected off, opacity, editing-layer mixing, Auto select;
-  run 3: Area scaling modes; run 4: To darkest pixel's rule; run 5: the anti-aliased
-  smoothing of scaled areas, partly; open items below)
+  run 3: Area scaling modes; run 4: To darkest pixel's rule; runs 5–6: the anti-aliased
+  smoothing of scaled areas, mostly; open items below)
 - CSP version: 1.13.2 (PRO, 64-bit, build 202301210208)
 - Date / method / observer: 2026-11-15 / automated-Wine (pen display :78, XTEST mouse) /
   Claude
@@ -254,6 +254,53 @@ Analysis: `tools/observe/analyze_fill_smoothing.py`.
   segment (CSP uses two, bending at the left run's midpoint), and it misses the notches and
   bumps (136–204 pixels off per cell). The rule at long runs is **open**.
 
+## Run 6 (2026-11-16, pen display :78): smoothing where long runs meet
+Data in `data/run6/`; input `sm2` (`tools/observe/make_fill_inputs.py`): 27 cells of 190×100,
+each a black rectangle (150×50 unless stated) with one feature on its top side, clicked at
+canvas (5, 5): a 1 px step down at column 10, 20, 40, 75, 110, 130; the mirrored step (up) at
+20, 75, 130; a centred step on rectangles 20, 40, 80, 170 wide; two 1 px steps 5, 10, 30,
+60 apart; 1 px deep notches and 1 px high bumps 10, 20, 40 wide; a step on the left, right and
+bottom side of a 90×80 rectangle; a plain rectangle. Captures: Rectangle 1 and 3,
+anti-aliasing on and off, and unscaled. Anti-aliasing on thresholded at 128 equals off
+(0 pixels). Analysis: `tools/observe/analyze_fill_longruns.py`; the boundary is read per column
+as the sum of the fill coverage (the mean height of the smoothed edge over the column), and
+lines are fitted to it.
+- **Observed, a single step** (runs at heights y (upper) and y + 1 (lower), the step at
+  column s, all exact to the fit's precision for every position and width):
+  - **Lower run** (the side where the edge is one row further into the shape): one straight
+    line through the step's midpoint (s, y + ½) and the lower run's midpoint, continued to
+    the run's far corner, which it meets **½ px past the hard edge** (y + 1½). E.g. step at
+    10 on a 148 px edge: through (8, 26.5) and (78, 27) to (148, 27.5).
+  - **Upper run**: flat from its far corner to its midpoint, then a straight ramp to the
+    step's midpoint, the ramp **translated ¼ px along the run, away from the step**: it
+    leaves the edge at midpoint − ¼ and reaches y + ½ at s − ¼ (3.75 / 7.75, 8.75 / 17.75,
+    18.75 / 37.75, 53.75 / 107.75 for steps at 8, 18, 38, 108).
+  - Mirrored cells mirror exactly; steps on the left, right and bottom sides behave the same
+    (orientation does not matter).
+  - Which run is "lower" decides it: the continuation to the corner happens where it moves
+    the boundary into the shape (the fill grows); toward the other corner the edge stays
+    flat. A corner between two runs whose other ends are corners stays sharp.
+- **Two steps:** the middle run goes straight between the two step midpoints (as in a
+  staircase); the outer runs follow the single-step rule.
+- **Notches and bumps:** the inner run makes a V: two lines from the step midpoints toward
+  the inner run's midpoint, each translated ¼ px into the inner run (notch 10: through
+  (68.25, 26.5) and (79.75, 26.5), apex 26.979 instead of 27); the outer runs follow the
+  upper-run rule.
+- **Model:** run midpoints; corners between runs of length ≥ 2 kept, except the lower-run
+  continuation; the ¼ px translation of step-to-run segments that are not continued to a
+  corner (not in monotone staircases). On `sm2` it reproduces 2378 of 2649 soft pixels exactly
+  at N = 1 and 2317 of 2600 at N = 3, the rest within ±3 (most ±1; ±1 differences have no
+  pattern in the exact value, so CSP's coverage arithmetic or vertex precision differs
+  slightly). On run 5's staircases it stays exact.
+- **Not covered by the model (open):**
+  - **acute tips** where a staircase turns back into a long run (the triangles' corners in
+    `sm1`): CSP keeps the long run flat up to the tip and continues the staircase's line;
+  - **2 and 3 px steps** (run 5 `step2`, `step3`): CSP treats them like 1 px steps (45° cut
+    64 at the step, ramps on both sides), while the model's corner rule takes them as long
+    runs; raising the "long" length for corners to 3 or 4 breaks staircases and tips, so the
+    two notions differ;
+  - small shapes (run 5's 1–5 px squares, r 3–12 disks) not yet compared.
+
 ## Implementation notes (Brushye)
 - Anti-aliasing border: CSP softens only the **4-neighbours** of the region (diagonal
   neighbours stay 0: 184 ring pixels at t = 0), and at t ≥ 50 only region pixels with a
@@ -277,9 +324,8 @@ Analysis: `tools/observe/analyze_fill_smoothing.py`.
 - Close gap: the level-5 bound between 20 and 24; how the closed gap is shaped; filling from
   outside with close gap; Fill narrow areas.
 - Straight vs premultiplied comparison; transparent pixels with different RGB.
-- Area scaling: the anti-aliased smoothing where long runs meet (run 5: staircases are
-  exact; corners of long runs stay sharp; single steps, notches and bumps become ramps whose
-  vertex rule is unknown); Rectangle and Round with negative N
+- Area scaling smoothing (runs 5–6): acute tips; 2–3 px steps; small shapes; the ±1
+  arithmetic differences; Rectangle and Round with negative N
   in 2-D (erosion by the same kernels, expected); To darkest pixel's negative N on shapes
   where square and round shrinks differ; the field's bounds (20 in To darkest pixel mode);
   luma rounding (colours whose 8-bit luma ties); the canvas edge in To darkest pixel.

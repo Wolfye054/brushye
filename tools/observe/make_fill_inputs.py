@@ -182,3 +182,48 @@ for i, r in enumerate([3, 5, 8, 12]):
     cx, cy = 300 + i * 120, 680
     img[(xx + 0.5 - cx) ** 2 + (yy + 0.5 - cy) ** 2 <= r * r] = 0
 save("sm1", img, img, img, 255)
+
+# Long-run rule (F-001 run 6), `sm2`: black rectangles on white with one feature on one side,
+# 28 cells of 190×100 (4 per row, from (10, 10)). The feature is drawn on the top side of a
+# W×50 rectangle (by default W = 150), as a height offset per column (1 = the black starts one
+# row lower), then the cell is mirrored or rotated for the side cells.
+def step_at(w, p):          # left part high, right part one row lower, from column p
+    return [0] * p + [1] * (w - p)
+def two_steps(w, d):        # two 1 px steps down, d apart, centred
+    a = (w - d) // 2
+    return [0] * a + [1] * d + [2] * (w - a - d)
+def notch(w, n):            # a 1 px deep dent n wide, centred
+    a = (w - n) // 2
+    return [0] * a + [1] * n + [0] * (w - a - n)
+def bump(w, n):             # a 1 px high bump n wide, centred
+    a = (w - n) // 2
+    return [1] * a + [0] * n + [1] * (w - a - n)
+SM2 = ([("step", 150, step_at(150, p), "") for p in [10, 20, 40, 75, 110, 130]]
+       + [("stepup", 150, step_at(150, p)[::-1], "") for p in [20, 75, 130]]
+       + [("stepw", w, step_at(w, w // 2), "") for w in [20, 40, 80, 170]]
+       + [("two", 150, two_steps(150, d), "") for d in [5, 10, 30, 60]]
+       + [("notch", 150, notch(150, n), "") for n in [10, 20, 40]]
+       + [("bump", 150, bump(150, n), "") for n in [10, 20, 40]]
+       + [("side", 90, step_at(90, 45), rot) for rot in ["left", "right", "bottom"]]
+       + [("plain", 150, [0] * 150, "")])
+def sm2_cell(w, prof, rot):
+    c = np.full((100, 190), 255, np.uint8)
+    h = 50 if rot == "" else 80
+    shape = np.full((h + 4, w), 255, np.uint8)
+    for x, o in enumerate(prof):
+        shape[2 + o:2 + h, x] = 0
+    if rot == "left":
+        shape = np.rot90(shape, 1)
+    elif rot == "right":
+        shape = np.rot90(shape, -1)
+    elif rot == "bottom":
+        shape = shape[::-1]
+    sh, sw = shape.shape
+    y, x = (100 - sh) // 2, (190 - sw) // 2
+    c[y:y + sh, x:x + sw] = np.minimum(c[y:y + sh, x:x + sw], shape)
+    return c
+img = np.full((800, 800), 255, np.uint8)
+for i, (_, w, prof, rot) in enumerate(SM2):
+    cx, cy = 10 + (i % 4) * 195, 10 + (i // 4) * 110
+    img[cy:cy + 100, cx:cx + 190] = sm2_cell(w, prof, rot)
+save("sm2", img, img, img, 255)

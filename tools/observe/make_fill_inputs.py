@@ -75,3 +75,77 @@ for i, prof in enumerate(specs):
         img[y0 + k:y0 + s - k, x0 + k] = v
         img[y0 + k:y0 + s - k, x0 + s - 1 - k] = v
 save("outlines", img, img, img, 255)
+
+# To darkest pixel (F-001 run 4): square outlines as in `outlines`, each with its own profile
+# across the thickness (outside → inside) and an interior value (default white). `dk1`, `dk2`.
+def profile_image(name, specs):
+    img = np.full((800, 800), 255, np.uint8)
+    for i, (prof, inner) in enumerate(specs):
+        x0, y0, s = 40 + (i % 4) * 190, 200 + (i // 4) * 260, 150
+        img[y0:y0 + s, x0:x0 + s] = inner
+        for k, v in enumerate(prof):
+            img[y0 + k, x0 + k:x0 + s - k] = v
+            img[y0 + s - 1 - k, x0 + k:x0 + s - k] = v
+            img[y0 + k:y0 + s - k, x0 + k] = v
+            img[y0 + k:y0 + s - k, x0 + s - 1 - k] = v
+    save(name, img, img, img, 255)
+profile_image("dk1", [([100, 50, 80, 0], 255), ([100, 50, 50, 80, 0], 255), ([0, 0, 128], 255),
+                      ([128, 0], 255), ([100, 100, 100, 100], 255), ([0, 0, 0, 50, 0, 0, 0], 255),
+                      ([0, 128, 0], 255), ([100, 100, 0], 255)])
+profile_image("dk2", [([0, 30, 30, 30], 255), ([0, 50, 100, 150, 200], 255),
+                      ([220, 200, 180, 160, 140, 120, 100, 80, 60, 40, 20, 0], 255),
+                      ([50, 0, 50, 0, 50], 255), ([0, 1], 255), ([1, 0], 255),
+                      ([100, 0, 0, 100], 255), ([100, 100, 100], 0)])
+
+# 2-D (`dk3`): a 1 px 8-connected diagonal black line, a 2 px one, a black ring 3 px thick
+# (r 60–63), a diagonal valley band (value by distance to the diagonal), a radial valley ring,
+# and a black plus sign (bars 5 px).
+img = np.full((800, 800), 255, np.uint8)
+yy, xx = np.mgrid[0:800, 0:800]
+for i in range(200):
+    img[100 + i, 100 + i] = 0
+    img[100 + i, 200 + i:202 + i] = 0
+r = np.hypot(xx + 0.5 - 600, yy + 0.5 - 200)
+img[(r >= 60) & (r < 63)] = 0
+valley = np.array([200, 150, 100, 50, 0, 50, 100, 150, 200])
+dd = (xx - yy) - 300
+band = (np.abs(dd) <= 4) & (yy >= 400) & (yy < 700) & (xx < 780)
+img[band] = valley[dd[band] + 4]
+ring = (np.abs(np.hypot(xx + 0.5 - 600, yy + 0.5 - 560) - 70) < 4.5)
+ri = np.clip(np.floor(np.hypot(xx + 0.5 - 600, yy + 0.5 - 560) - 70 + 4.5).astype(int), 0, 8)
+img[ring] = valley[ri[ring]]
+img[640:645, 80:200] = 0
+img[580:705, 137:142] = 0
+save("dk3", img, img, img, 255)
+
+# Darkness measure (F-001 run 4): two-pixel profiles [A, B] (outside → inside, white interior).
+# The fill takes both only if B is darker than A, so each outline shows the order of a pair
+# under CSP's measure: `dk4` colour pairs (luma 601 / 709, mean, max disagree), `dk5` alpha
+# pairs on a transparent background (RGBA 0,0,0,0) with a transparent interior.
+def rgba_profile_image(name, specs, bg):
+    img = np.zeros((800, 800, 4), np.uint8)
+    img[...] = bg
+    for i, (prof, inner) in enumerate(specs):
+        x0, y0, s = 40 + (i % 4) * 190, 200 + (i // 4) * 260, 150
+        img[y0:y0 + s, x0:x0 + s] = inner
+        for k, v in enumerate(prof):
+            img[y0 + k, x0 + k:x0 + s - k] = v
+            img[y0 + s - 1 - k, x0 + k:x0 + s - k] = v
+            img[y0 + k:y0 + s - k, x0 + k] = v
+            img[y0 + k:y0 + s - k, x0 + s - 1 - k] = v
+    Image.fromarray(img, "RGBA").save(os.path.join(out, name + ".png"))
+W4 = (255, 255, 255, 255)
+R, G, B = (255, 0, 0, 255), (0, 255, 0, 255), (0, 0, 255, 255)
+gray = lambda g: (g, g, g, 255)
+rgba_profile_image("dk4", [([R, B], W4), ([B, R], W4), ([G, R], W4), ([gray(80), R], W4),
+                           ([gray(30), B], W4), ([gray(170), G], W4), ([gray(100), B], W4),
+                           ([gray(110), (255, 0, 255, 255)], W4)], W4)
+k = lambda a: (0, 0, 0, a)
+T0 = (0, 0, 0, 0)
+rgba_profile_image("dk5", [([k(255), k(255)], T0), ([k(128), k(255)], T0),
+                           ([k(255), k(128)], T0), ([W4, k(255)], T0), ([k(128), k(128)], T0),
+                           ([gray(128), k(128)], T0), ([k(200), k(255)], T0), ([k(255)], T0)], T0)
+# `dk6`: the alpha rounding around 50 % black (transparent background and interior):
+# [gray g, black α128] for g = 126, 127, 129, 130 and [black α128, gray g] for g = 126..129.
+rgba_profile_image("dk6", [([gray(g), k(128)], T0) for g in [126, 127, 129, 130]]
+                   + [([k(128), gray(g)], T0) for g in [126, 127, 128, 129]], T0)

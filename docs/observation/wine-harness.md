@@ -122,5 +122,9 @@ Rules learned the hard way:
   following Edit > Undo remove the previous step (e.g. the new layer).
 - The ▸ at the end of the Close gap bar opens a pop-up; clicks after it can toggle other rows
   (Refer multiple got unchecked). Screenshot-check Tool property rows after any change.
+- File > Open on a file that is already open just switches to that document; the following
+  Layer > New Raster Layer then adds a third layer and the eye check at the second row hides
+  the wrong layer (the exports came out fully covered). Open each input once, or delete the
+  extra layer (Layer > Delete Layer) before capturing. Check exports' mean alpha for floods.
 - Open PNG inputs with File > Open and a Windows path (`Z:\...`, backslashes); slashes are
   rejected as invalid characters.

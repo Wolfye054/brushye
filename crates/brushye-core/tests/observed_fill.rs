@@ -160,7 +160,7 @@ fn close_gap_thresholds() {
 }
 
 /// Run 3: Area scaling, Rectangle and Round. Without anti-aliasing, exact (grown and shrunk);
-/// with it, exact away from the curved disk (CSP smooths curves; not modelled).
+/// with it (smoothed outline, runs 5–6), exact away from the disk and within 2 on it.
 #[test]
 fn area_scaling_rectangle_and_round() {
     let scale = rgba("inputs/scale.png");
@@ -185,6 +185,8 @@ fn area_scaling_rectangle_and_round() {
                     .filter(|&i| got[i] != want[i] && (!aa || outside_disk(i)))
                     .count();
                 assert_eq!(bad, 0, "{name} {n} aa={aa}");
+                let worst = (0..640_000).map(|i| got[i].abs_diff(want[i])).max();
+                assert!(worst <= Some(2), "{name} {n} aa={aa}: {worst:?}");
             }
         }
     }
@@ -244,5 +246,200 @@ fn area_scaling_to_darkest_pixel() {
             let want = alpha(&format!("{}.png", pattern.replace("{n}", &n.to_string())));
             assert_eq!(diff(&got, &want), 0, "{input} N={n}");
         }
+    }
+}
+
+/// Runs 3–6: the anti-aliased smoothing of scaled areas (`brushye_core::smooth`) against every
+/// anti-aliased capture. Each row records how close the model is (spec F-001, runs 5–6):
+/// soft pixels matched exactly at least, pixels off by more than 1 at most, the largest error.
+/// `sm2` (long runs), the run 3 disk and run 4's 2-D shapes are within ±1–4; `sm1`'s large
+/// errors are its 2–3 px steps and small shapes (open in the spec); `dk1`'s are two corners.
+#[test]
+fn area_scaling_smoothing() {
+    use ScaleMode::{Darkest, Rectangle, Round};
+    type Case<'a> = (
+        &'a str,
+        &'a str,
+        (u32, u32),
+        ScaleMode,
+        i32,
+        usize,
+        usize,
+        u8,
+    );
+    let cases: [Case; 16] = [
+        (
+            "sm2",
+            "run6/sm2_rect1_aa",
+            (5, 5),
+            Rectangle,
+            1,
+            2378,
+            105,
+            3,
+        ),
+        (
+            "sm2",
+            "run6/sm2_rect3_aa",
+            (5, 5),
+            Rectangle,
+            3,
+            2317,
+            108,
+            3,
+        ),
+        (
+            "sm1",
+            "run5/sm1_rect1_aa",
+            (20, 20),
+            Rectangle,
+            1,
+            1849,
+            466,
+            154,
+        ),
+        (
+            "sm1",
+            "run5/sm1_round3_aa",
+            (20, 20),
+            Round,
+            3,
+            1594,
+            221,
+            154,
+        ),
+        (
+            "sm1",
+            "run5/sm1_darkest1_aa",
+            (20, 20),
+            Darkest,
+            1,
+            2277,
+            93,
+            126,
+        ),
+        (
+            "sm1",
+            "run5/sm1_darkest3_aa",
+            (20, 20),
+            Darkest,
+            3,
+            2062,
+            84,
+            126,
+        ),
+        (
+            "sm1",
+            "run5/sm1_rect-1_aa",
+            (20, 20),
+            Rectangle,
+            -1,
+            1948,
+            429,
+            154,
+        ),
+        (
+            "sm1",
+            "run5/sm1_rect-3_aa",
+            (20, 20),
+            Rectangle,
+            -3,
+            1983,
+            404,
+            154,
+        ),
+        (
+            "sm1",
+            "run5/sm1_darkest10_aa",
+            (20, 20),
+            Darkest,
+            10,
+            1373,
+            95,
+            125,
+        ),
+        (
+            "sm1",
+            "run5/sm1_rect10_aa",
+            (20, 20),
+            Rectangle,
+            10,
+            895,
+            235,
+            154,
+        ),
+        (
+            "scale",
+            "run3/sc_rect5_aa",
+            (50, 50),
+            Rectangle,
+            5,
+            288,
+            16,
+            2,
+        ),
+        (
+            "scale",
+            "run3/sc_round10_aa",
+            (50, 50),
+            Round,
+            10,
+            256,
+            0,
+            1,
+        ),
+        (
+            "scale",
+            "run3/sc_darkest10_aa",
+            (50, 50),
+            Darkest,
+            10,
+            264,
+            0,
+            1,
+        ),
+        (
+            "outlines",
+            "run3/ol_darkest10_aa",
+            (20, 20),
+            Darkest,
+            10,
+            2744,
+            16,
+            4,
+        ),
+        (
+            "dk1",
+            "run4/dk1_d10_aa",
+            (20, 20),
+            Darkest,
+            10,
+            2244,
+            24,
+            112,
+        ),
+        ("dk3", "run4/dk3_d10_aa", (20, 20), Darkest, 10, 912, 0, 1),
+    ];
+    for (input, want, (x, y), mode, n, min_exact, max_more, max_diff) in cases {
+        let img = rgba(&format!("inputs/{input}.png"));
+        let p = FillParams {
+            scale: n,
+            scale_mode: mode,
+            ..params(10.0, true)
+        };
+        let got = coverage(&img, W, H, x, y, &p);
+        let want_px = alpha(&format!("{want}.png"));
+        let (mut exact, mut more, mut worst) = (0, 0, 0);
+        for (&g, &w) in got.iter().zip(&want_px) {
+            let d = g.abs_diff(w);
+            if (1..255).contains(&g) || (1..255).contains(&w) {
+                exact += usize::from(d == 0);
+            }
+            more += usize::from(d > 1);
+            worst = worst.max(d);
+        }
+        assert!(exact >= min_exact, "{want}: {exact} exact < {min_exact}");
+        assert!(more <= max_more, "{want}: {more} off by > 1 > {max_more}");
+        assert!(worst <= max_diff, "{want}: max {worst} > {max_diff}");
     }
 }

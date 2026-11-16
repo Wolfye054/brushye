@@ -17,7 +17,8 @@
 //! - Area scaling (run 3): Rectangle / Round grow (N > 0) or shrink (N < 0) the region by the
 //!   square / the rounded kernel of S-001 run 5 (the canvas edge counts as outside), exact
 //!   without anti-aliasing; with it, CSP smooths curved edges of the grown area (not modelled:
-//!   the result here is the binary area, exact on straight edges).
+//!   the result here is the binary area, exact on straight edges). With anti-aliasing the
+//!   scaled area's outline is smoothed in every mode (runs 5–6, `crate::smooth`).
 //! - To darkest pixel (run 4): growth step by step into darker pixels, stopping at a line's
 //!   darkest pixel (`darkest_grow`), exact without anti-aliasing; shrinking (N < 0) is the
 //!   Rectangle shrink. With anti-aliasing CSP smooths the grown outline (not modelled).
@@ -120,23 +121,32 @@ pub fn coverage(reference: &[u8], w: u32, h: u32, x: u32, y: u32, p: &FillParams
         )
     };
     let mut out = vec![0u8; n];
-    if p.scale > 0 && p.scale_mode == ScaleMode::Darkest {
-        let grown = darkest_grow(reference, wu, hu, &region, p.scale.unsigned_abs());
-        return grown.iter().map(|&r| if r { 255 } else { 0 }).collect();
-    }
     if p.scale != 0 {
-        // Rectangle, Round, and To darkest pixel shrinking (the square, F-001 run 3).
-        // Area scaling replaces the soft border: the binary region, grown or shrunk.
-        let v: Vec<u8> = region.iter().map(|&r| if r { 255 } else { 0 }).collect();
-        return crate::selection::morph(
-            &v,
-            w,
-            h,
-            p.scale.unsigned_abs(),
-            p.scale_mode == ScaleMode::Round,
-            p.scale > 0,
-            0,
-        );
+        // Area scaling replaces the soft border: the binary area grown or shrunk, then, with
+        // anti-aliasing, its outline smoothed (runs 5–6, `smooth`).
+        let scaled: Vec<bool> = if p.scale > 0 && p.scale_mode == ScaleMode::Darkest {
+            darkest_grow(reference, wu, hu, &region, p.scale.unsigned_abs())
+        } else {
+            // Rectangle, Round, and To darkest pixel shrinking (the square, run 3).
+            let v: Vec<u8> = region.iter().map(|&r| if r { 255 } else { 0 }).collect();
+            crate::selection::morph(
+                &v,
+                w,
+                h,
+                p.scale.unsigned_abs(),
+                p.scale_mode == ScaleMode::Round,
+                p.scale > 0,
+                0,
+            )
+            .iter()
+            .map(|&v| v > 0)
+            .collect()
+        };
+        return if p.aa {
+            crate::smooth::smooth_area(&scaled, w, h)
+        } else {
+            scaled.iter().map(|&r| if r { 255 } else { 0 }).collect()
+        };
     }
     if !p.aa {
         for (o, &r) in out.iter_mut().zip(&region) {

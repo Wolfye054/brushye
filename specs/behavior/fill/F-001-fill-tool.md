@@ -1,8 +1,9 @@
 # F-001 Fill tool (and the flood fill shared with Auto select)
 - Status: **implemented** (2026-11-15: `fill.area`, `select.auto`, the Fill and Auto select
   tools; exact on every test in `crates/brushye-core/tests/observed_fill.rs`, Area scaling
-  in all three modes exact without anti-aliasing; not yet: the anti-aliased smoothing of
-  scaled outlines, Enclose and fill, Paint unfilled area, Selection for referred layers) /
+  in all three modes exact without anti-aliasing; 2026-11-16: the anti-aliased smoothing of
+  scaled areas (`brushye_core::smooth`), close to CSP with the differences recorded per
+  capture; not yet: Enclose and fill, Paint unfilled area, Selection for referred layers) /
   **observed** (run 1: settings layout, tolerance metric, anti-aliasing, close gap;
   run 2: area scaling, connected off, opacity, editing-layer mixing, Auto select;
   run 3: Area scaling modes; run 4: To darkest pixel's rule; runs 5–6: the anti-aliased
@@ -310,11 +311,29 @@ lines are fitted to it.
   with the selection morphology (square, rounded kernel), exact without anti-aliasing and on
   straight edges with it; the smoothing of curved edges is not modelled.
 - To darkest pixel (`scale_mode=darkest`, the default mode): run 4's rule, exact without
-  anti-aliasing; with it the result is the same binary area (the smoothing is not
-  modelled). Negative N shrinks by the square. Refer other layers / Refer to all layers
+  anti-aliasing. Negative N shrinks by the square. Refer other layers / Refer to all layers
   default to To darkest pixel 10, as in CSP. Chosen, not observed: a pixel beyond the canvas
   edge counts as darkest (a flat run reaching the edge is entered to the edge); luma is
   compared unrounded (×1000), so colours whose 8-bit luma would tie are still ordered.
+- Smoothing (anti-aliasing on, any scaled area, `brushye_core::smooth`): the run 5–6 model
+  (run midpoints; kept corners between runs ≥ 2 long; the lower-run continuation to the
+  corner; the ¼ px translation of step segments) plus one rule read from the existing
+  captures: **both corners of a short run that turns the outline around** (its neighbours
+  run in opposite directions) are kept, so the long runs beside it stay straight. That is
+  the end of a 1 px black line left inside run 3's 3 px bar (CSP: no soft pixels; without the
+  rule the whole line was slanted) and the triangles' tips in run 5. With it, run 3's bars
+  are exact and run 5's To darkest pixel errors fall from 946 to 93 pixels.
+  - Agreement, per capture (`area_scaling_smoothing` in `observed_fill.rs`, soft pixels
+    exact / pixels off by more than 1 / largest error): `sm2` Rectangle 1 2378/105/3,
+    Rectangle 3 2317/108/3; run 3 disk (Rectangle 5, Round 10, To darkest pixel 10) at most
+    16 pixels off by 2; run 4 `dk3` 912/0/1, `outlines` 2744/16/4; `dk1` 2244/24/112 (the
+    diamond's 45° corner smoothing is drawn at two left corners where CSP leaves them sharp);
+    `sm1` 895–2277 exact, 84–466 off, up to 154: its 2–3 px steps (run 5 `step2`, `step3`,
+    the 2 px bumps). Treating 2–3 px steps between long runs as 1 px steps was tried and
+    made them worse (errors up to 255); it is not the rule.
+  - Chosen, not observed: beyond the canvas edge the area repeats its edge pixels, so the
+    canvas border is never smoothed. Coverage is exact area, rounded half up.
+  - Cost: about 0.3 s for a 4000×4000 area (release build).
 - Chosen, not observed: 4-connectivity of the region; Close gap as a box closing with boxes
   2, 4, 6, 11, 21 px (reproduces every hold/leak outcome; the fill's shape inside a closed
   gap is approximate); a fill inside a selection is clipped like a stroke.
@@ -324,8 +343,8 @@ lines are fitted to it.
 - Close gap: the level-5 bound between 20 and 24; how the closed gap is shaped; filling from
   outside with close gap; Fill narrow areas.
 - Straight vs premultiplied comparison; transparent pixels with different RGB.
-- Area scaling smoothing (runs 5–6): acute tips; 2–3 px steps; small shapes; the ±1
-  arithmetic differences; Rectangle and Round with negative N
+- Area scaling smoothing (runs 5–6): 2–3 px steps; small shapes (1–5 px squares, r 3–12
+  disks); the two `dk1` corners; the ±1 arithmetic differences; Rectangle and Round with negative N
   in 2-D (erosion by the same kernels, expected); To darkest pixel's negative N on shapes
   where square and round shrinks differ; the field's bounds (20 in To darkest pixel mode);
   luma rounding (colours whose 8-bit luma ties); the canvas edge in To darkest pixel.

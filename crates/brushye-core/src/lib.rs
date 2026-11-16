@@ -20,6 +20,7 @@ pub mod mask;
 pub mod render;
 pub mod rng;
 pub mod selection;
+pub mod smooth;
 pub mod tile;
 
 pub use blend::BlendMode;

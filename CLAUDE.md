@@ -149,7 +149,9 @@ M10 part 1 (layer structure, D-023) is implemented: folders/Through, clipping, l
 .brsh format v3, all matching the observed CSP exports. Selections (D-024, S-001/U-016) are
 implemented: select.* commands, clipped strokes, selection pen, Blur border, Selection from
 Layer, .brsh v4, the Selection area tool, marching ants and the Launcher; the ellipse edge
-curve is still an approximation. M10 parts 1–2 report: `docs/reports/M10-layers-and-selections.md`. New architectural decisions still
+curve is still an approximation. The Fill tool and Auto select (F-001) are implemented: tolerance, anti-aliasing,
+Close gap, opacity, Area scaling in all three modes (exact without anti-aliasing) and the
+anti-aliased smoothing of scaled areas (close to CSP; open cases in the spec). M10 parts 1–2 report: `docs/reports/M10-layers-and-selections.md`. New architectural decisions still
 need maintainer approval first (see Working agreement). Never copy code from the maintainer's
 other projects (photocraft, clipcraft); design ideas only.
 

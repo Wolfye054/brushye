@@ -203,3 +203,46 @@ fn area_scaling_rectangle_and_round() {
         );
     }
 }
+
+/// Runs 3–4: To darkest pixel without anti-aliasing, exact: 1-D profiles across square
+/// outlines (`outlines`, `dk1`, `dk2`), 2-D shapes (`scale`, `dk3`: diagonal lines, rings, a
+/// valley band and ring, a plus sign), colour and alpha pairs (`dk4`–`dk6`), N up to 20;
+/// negative N shrinks like Rectangle.
+#[test]
+fn area_scaling_to_darkest_pixel() {
+    type Case<'a> = (&'a str, &'a str, (u32, u32), &'a [i32]);
+    let cases: [Case; 8] = [
+        (
+            "scale",
+            "run3/sc_darkest{n}_no",
+            (50, 50),
+            &[1, 2, 3, 5, 10],
+        ),
+        (
+            "outlines",
+            "run3/ol_darkest{n}_no",
+            (20, 20),
+            &[1, 2, 3, 5, 10, -1, -3],
+        ),
+        ("dk1", "run4/dk1_d{n}_no", (20, 20), &[1, 2, 3, 5, 10, 20]),
+        ("dk2", "run4/dk2_d{n}_no", (20, 20), &[1, 2, 3, 5, 10, 20]),
+        ("dk3", "run4/dk3_d{n}_no", (20, 20), &[1, 2, 3, 5, 10, 20]),
+        // Darkness measure: colour pairs (BT.601 luma) and alpha pairs (luma and alpha).
+        ("dk4", "run4/dk4_d{n}_no", (20, 20), &[10]),
+        ("dk5", "run4/dk5_d{n}_no", (20, 20), &[10]),
+        ("dk6", "run4/dk6_d{n}_no", (20, 20), &[10]),
+    ];
+    for (input, pattern, (x, y), ns) in cases {
+        let img = rgba(&format!("inputs/{input}.png"));
+        for &n in ns {
+            let p = FillParams {
+                scale: n,
+                scale_mode: ScaleMode::Darkest,
+                ..params(10.0, false)
+            };
+            let got = coverage(&img, W, H, x, y, &p);
+            let want = alpha(&format!("{}.png", pattern.replace("{n}", &n.to_string())));
+            assert_eq!(diff(&got, &want), 0, "{input} N={n}");
+        }
+    }
+}

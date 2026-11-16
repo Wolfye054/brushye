@@ -492,7 +492,12 @@ pub fn default_set(tool: Tool) -> Option<ToolSet> {
                             tool,
                             *k,
                             n,
-                            preset("size=10.0 tolerance=10.0 close_gap=2"),
+                            // Refer other layers: Area scaling, To darkest pixel 10 (F-001).
+                            preset(if *k == SubKind::FillOthers {
+                                "size=10.0 tolerance=10.0 close_gap=2 scale=10 scale_mode=darkest"
+                            } else {
+                                "size=10.0 tolerance=10.0 close_gap=2"
+                            }),
                         )
                     })
                     .collect(),
@@ -514,7 +519,12 @@ pub fn default_set(tool: Tool) -> Option<ToolSet> {
                             tool,
                             *k,
                             n,
-                            preset("size=10.0 tolerance=10.0 close_gap=2 mode=new"),
+                            // Refer to all layers: as Fill's Refer other layers (F-001).
+                            preset(if *k == SubKind::AutoAll {
+                                "size=10.0 tolerance=10.0 close_gap=2 mode=new scale=10 scale_mode=darkest"
+                            } else {
+                                "size=10.0 tolerance=10.0 close_gap=2 mode=new"
+                            }),
                         )
                     })
                     .collect(),

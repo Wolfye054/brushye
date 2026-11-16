@@ -256,7 +256,7 @@ Auto select the area around a point.
 | `close_gap` | u8 | optional `key=` | Close gap level 0 (off, default) ..= 5 |
 | `aa` | bool | optional `key=` | Anti-aliasing (default true) |
 | `scale` | i64 | optional `key=` | Area scaling in px (default 0 = off; negative shrinks) |
-| `scale_mode` | scaling mode (rectangle\|round\|darkest) | optional `key=` | Scaling mode: rectangle or round (darkest: not available yet) |
+| `scale_mode` | scaling mode (rectangle\|round\|darkest) | optional `key=` | Scaling mode: rectangle, round or darkest (To darkest pixel, the default) |
 | `refer` | reference (layer\|all) | optional `key=` | layer (default) or all (the visible image) |
 | `mode` | selection mode (new\|add\|subtract\|intersect) | optional `key=` | new (default), add, subtract or intersect |
 
@@ -274,7 +274,7 @@ Fill the area around a point (Fill tool).
 | `close_gap` | u8 | optional `key=` | Close gap level 0 (off, default) ..= 5 |
 | `aa` | bool | optional `key=` | Anti-aliasing (default true) |
 | `scale` | i64 | optional `key=` | Area scaling in px (default 0 = off; negative shrinks) |
-| `scale_mode` | scaling mode (rectangle\|round\|darkest) | optional `key=` | Scaling mode: rectangle or round (darkest: not available yet) |
+| `scale_mode` | scaling mode (rectangle\|round\|darkest) | optional `key=` | Scaling mode: rectangle, round or darkest (To darkest pixel, the default) |
 | `opacity` | u8 | optional `key=` | Opacity in percent (default 100) |
 | `refer` | reference (layer\|all) | optional `key=` | layer (default: the layer itself) or all (the visible image) |
 

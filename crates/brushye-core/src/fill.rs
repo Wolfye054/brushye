@@ -17,7 +17,10 @@
 //! - Area scaling (run 3): Rectangle / Round grow (N > 0) or shrink (N < 0) the region by the
 //!   square / the rounded kernel of S-001 run 5 (the canvas edge counts as outside), exact
 //!   without anti-aliasing; with it, CSP smooths curved edges of the grown area (not modelled:
-//!   the result here is the binary area, exact on straight edges). To darkest pixel: open.
+//!   the result here is the binary area, exact on straight edges).
+//! - To darkest pixel (run 4): growth step by step into darker pixels, stopping at a line's
+//!   darkest pixel (`darkest_grow`), exact without anti-aliasing; shrinking (N < 0) is the
+//!   Rectangle shrink. With anti-aliasing CSP smooths the grown outline (not modelled).
 
 /// Box sizes of the Close gap levels 1–5: a gap of up to `k − 1` px is closed.
 const GAP_BOX: [usize; 5] = [2, 4, 6, 11, 21];
@@ -27,7 +30,7 @@ const GAP_BOX: [usize; 5] = [2, 4, 6, 11, 21];
 pub enum ScaleMode {
     Rectangle,
     Round,
-    /// To darkest pixel (CSP's default): not implemented.
+    /// To darkest pixel (CSP's default).
     #[default]
     Darkest,
 }
@@ -117,7 +120,12 @@ pub fn coverage(reference: &[u8], w: u32, h: u32, x: u32, y: u32, p: &FillParams
         )
     };
     let mut out = vec![0u8; n];
-    if p.scale != 0 && p.scale_mode != ScaleMode::Darkest {
+    if p.scale > 0 && p.scale_mode == ScaleMode::Darkest {
+        let grown = darkest_grow(reference, wu, hu, &region, p.scale.unsigned_abs());
+        return grown.iter().map(|&r| if r { 255 } else { 0 }).collect();
+    }
+    if p.scale != 0 {
+        // Rectangle, Round, and To darkest pixel shrinking (the square, F-001 run 3).
         // Area scaling replaces the soft border: the binary region, grown or shrunk.
         let v: Vec<u8> = region.iter().map(|&r| if r { 255 } else { 0 }).collect();
         return crate::selection::morph(
@@ -185,6 +193,104 @@ pub fn apply_opacity(cov: &mut [u8], opacity: u8) {
     for a in cov {
         *a = (u32::from(*a) * o / 100) as u8;
     }
+}
+
+/// Tone of a reference pixel for To darkest pixel (F-001 run 4): BT.601 luma (×1000, of the
+/// straight colour) and alpha. A fully transparent pixel counts as white.
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct Tone {
+    luma: i32,
+    alpha: i32,
+}
+
+impl Tone {
+    /// Beyond the canvas edge: darker than any pixel (chosen, not observed).
+    const EDGE: Tone = Tone {
+        luma: -1,
+        alpha: 256,
+    };
+
+    fn of(px: &[u8; 4]) -> Tone {
+        let [r, g, b, a] = px.map(i32::from);
+        Tone {
+            luma: if a == 0 {
+                255_000
+            } else {
+                299 * r + 587 * g + 114 * b
+            },
+            alpha: a,
+        }
+    }
+
+    /// Not lighter than `o`: luma no higher and alpha no lower (the two are not traded:
+    /// 50 % black and opaque gray 126–130 are each not darker than the other, run 4 `dk6`).
+    fn not_lighter(self, o: Tone) -> bool {
+        self.luma <= o.luma && self.alpha >= o.alpha
+    }
+}
+
+/// To darkest pixel, growing by `n` (F-001 run 4, exact without anti-aliasing): `n` steps,
+/// each adding every pixel q outside the area with a 4-neighbour p inside it (as it was
+/// before the step) where q is darker than p, or the same tone as p and the pixel beyond q
+/// (q + (q − p)) is not lighter than q. So the growth runs down into lines and stops at their
+/// darkest pixel, leaving out the last pixel of a flat run that a lighter pixel follows.
+fn darkest_grow(reference: &[u8], w: usize, h: usize, region: &[bool], n: u32) -> Vec<bool> {
+    let v: Vec<Tone> = reference.as_chunks::<4>().0.iter().map(Tone::of).collect();
+    let at = |x: isize, y: isize| -> Tone {
+        if x < 0 || y < 0 || x >= w as isize || y >= h as isize {
+            Tone::EDGE
+        } else {
+            v[y as usize * w + x as usize]
+        }
+    };
+    let mut area = region.to_vec();
+    // Only pixels next to the area can join; track that frontier between steps.
+    let mut frontier: Vec<usize> = (0..w * h).filter(|&i| !area[i]).collect();
+    for _ in 0..n {
+        let mut add = Vec::new();
+        for &i in &frontier {
+            let (x, y) = ((i % w) as isize, (i / w) as isize);
+            let vq = v[i];
+            let joins = [(1, 0), (-1, 0), (0, 1), (0, -1)].iter().any(|&(dx, dy)| {
+                // p = q − d inside the area; q + d is the pixel beyond.
+                let (px, py) = (x - dx, y - dy);
+                if px < 0 || py < 0 || px >= w as isize || py >= h as isize {
+                    return false;
+                }
+                let pi = py as usize * w + px as usize;
+                let vp = v[pi];
+                area[pi] && vq.not_lighter(vp) && (vq != vp || at(x + dx, y + dy).not_lighter(vq))
+            });
+            if joins {
+                add.push(i);
+            }
+        }
+        if add.is_empty() {
+            break;
+        }
+        for &i in &add {
+            area[i] = true;
+        }
+        // The next step's candidates: neighbours of the pixels just added.
+        let mut next = Vec::new();
+        for &i in &add {
+            let (x, y) = (i % w, i / w);
+            for (ok, j) in [
+                (x > 0, i.wrapping_sub(1)),
+                (x + 1 < w, i + 1),
+                (y > 0, i.wrapping_sub(w)),
+                (y + 1 < h, i + w),
+            ] {
+                if ok && !area[j] {
+                    next.push(j);
+                }
+            }
+        }
+        next.sort_unstable();
+        next.dedup();
+        frontier = next;
+    }
+    area
 }
 
 /// Pixels of `mask` 4-connected to `seed`.

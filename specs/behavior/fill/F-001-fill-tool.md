@@ -1,10 +1,11 @@
 # F-001 Fill tool (and the flood fill shared with Auto select)
 - Status: **implemented** (2026-11-15: `fill.area`, `select.auto`, the Fill and Auto select
-  tools; exact on every test in `crates/brushye-core/tests/observed_fill.rs`; not yet: Area
-  scaling (run 3: Rectangle/Round exact without anti-aliasing), Enclose and fill, Paint unfilled area, Selection for referred layers) /
+  tools; exact on every test in `crates/brushye-core/tests/observed_fill.rs`, Area scaling
+  in all three modes exact without anti-aliasing; not yet: the anti-aliased smoothing of
+  scaled outlines, Enclose and fill, Paint unfilled area, Selection for referred layers) /
   **observed** (run 1: settings layout, tolerance metric, anti-aliasing, close gap;
-  run 2: area scaling, connected off, opacity, editing-layer mixing, Auto select; open items
-  below)
+  run 2: area scaling, connected off, opacity, editing-layer mixing, Auto select;
+  run 3: Area scaling modes; run 4: To darkest pixel's rule; open items below)
 - CSP version: 1.13.2 (PRO, 64-bit, build 202301210208)
 - Date / method / observer: 2026-11-15 / automated-Wine (pen display :78, XTEST mouse) /
   Claude
@@ -154,7 +155,59 @@ on `scale`, (20, 20) on `outlines`); every setting checked on a screenshot.
   - **Negative N** shrinks the fill by |N| (−1 removes one pixel row along the edge, −3
     three), in all three modes.
   - The general rule behind To darkest pixel (ties in uniform runs, 2-D shapes) is
-    **open**; the observations above are 1-D cuts.
+    **open**; the observations above are 1-D cuts. (Run 4 settles it.)
+
+## Run 4 (2026-11-15, pen display :78): To darkest pixel
+Data in `data/run4/`; inputs `dk1`–`dk6` (`tools/observe/make_fill_inputs.py`). Same setup as
+run 3 (Refer other layers, tolerance 10, Close gap off, click at canvas (20, 20) in the
+outside), Scaling mode To darkest pixel, every Area scaling value checked on a screenshot.
+- **Inputs.** `dk1`, `dk2`: square outlines (150 px), each with its own profile across the
+  thickness, outside → inside: `dk1` [100 50 80 0], [100 50 50 80 0], [0 0 128], [128 0],
+  [100 100 100 100], [0 0 0 50 0 0 0], [0 128 0], [100 100 0]; `dk2` [0 30 30 30],
+  [0 50 100 150 200], [220 200 … 20 0] (12 px), [50 0 50 0 50], [0 1], [1 0], [100 0 0 100],
+  [100 100 100] with a black interior; all with white interiors otherwise. `dk3` (2-D): 1 px
+  and 2 px diagonal black lines, a black ring 3 px thick, a diagonal valley band, a radial
+  valley ring, a black plus sign. `dk4`: two-pixel colour pairs [A, B] (red/blue, blue/red,
+  green/red, gray 80/red, gray 30/blue, gray 170/green, gray 100/blue, gray 110/magenta).
+  `dk5`, `dk6`: black at alpha 128/200/255, white and grays on a transparent background
+  (RGBA 0 0 0 0) with transparent interiors.
+- **Captures.** Anti-aliasing off: `dk1`–`dk3` at N = 1, 2, 3, 5, 10, 20, `dk4`–`dk6` at 10,
+  and each unscaled (`<img>_d<N>_no`, `<img>_base_no`). Anti-aliasing on: `dk1` at 1–5, 10–15,
+  20, `dk2`/`dk3` at 3, 10, 20 (`_aa`).
+- **The Area scaling field stops at 20** (30, 50 and 100 typed in To darkest pixel mode each
+  show 20). The lower bound and the other modes' bounds were not checked.
+- **Rule (anti-aliasing off), exact on all 21 scaled captures and on run 3's 10 To darkest pixel
+  captures (`sc_darkest*`, `ol_darkest*`), 0 pixels different:** starting from the unscaled
+  fill, N steps; each step adds every pixel q outside the area that has a 4-neighbour p in
+  the area (as it was before the step) such that **q is darker than p**, or **q has the same
+  tone as p and the pixel beyond q (q + (q − p)) is not lighter than q**. Growth stops
+  early when a step adds nothing.
+  - So solid shapes grow by the diamond (N 4-neighbour steps: the run 3 disk), lines are
+    entered down to their darkest pixel, and a flat run followed by something lighter loses
+    its last pixel (uniform line t → t − 1; t = 1 is entered since its pixel is darker
+    than the white it's reached from). [100 50 80 0] stops after 50; [100 100 0] is entered
+    entirely; [0 128 0] stops after the first 0.
+- **Darkness of a pixel:** compared on **BT.601 luma** (0.299 R + 0.587 G + 0.114 B) of the
+  straight colour **and alpha separately**. q is "not lighter" than p when its luma is no
+  higher and its alpha no lower; "darker" when it is not lighter and not the same.
+  - `dk4`: blue after red, red after green, red after gray 80, blue after gray 30, green
+    after gray 170, magenta after gray 110 are all entered (darker); red after blue is not.
+    This excludes the RGB mean, the max and BT.709 weights (green 182 > 170).
+  - `dk5`: transparent → black, 50 % black → black, black at alpha 200 → black are entered;
+    black → 50 % black is not; transparent → white → black enters both (a fully transparent
+    pixel counts as **white**: lighter than everything, as light as white).
+  - `dk6`: 50 % black and opaque gray 126, 127, 129, 130 (and gray 128 in `dk5`) are each
+    **not** entered from the other, in both directions: luma and alpha are not traded off
+    (composited over white, 50 % black would be 127).
+- **Negative N:** run 3's `ol_darkest-1`, `ol_darkest-3` equal the shrink by the square
+  (8-neighbour erosion), not the diamond (32 and 192 pixels off); on these outlines the
+  Rectangle and Round shrinks are identical.
+- **Anti-aliasing on:** thresholding the anti-aliased result at 128 gives the
+  anti-aliasing-off area (0 pixels different, except 16 on `dk1`/`ol` at N ≥ 10). The soft
+  pixels are the grown outline smoothed: on a side where the last pixel of a flat run was left
+  out, that pixel ramps linearly along the side from 127 at the corners to 1 (N ≤ 11) or 2
+  (N ≥ 12) at the middle; the diamond's corners become 45° anti-aliased steps (239 207 175
+  143 at N = 10). **Open:** the smoothing rule (the same as run 3's curve smoothing?).
 
 ## Implementation notes (Brushye)
 - Anti-aliasing border: CSP softens only the **4-neighbours** of the region (diagonal
@@ -163,9 +216,13 @@ on `scale`, (20, 20) on `outlines`); every setting checked on a screenshot.
   export in runs 1–2 is reproduced exactly.
 - Area scaling Rectangle / Round (`scale=`, `scale_mode=`): the binary region grown or shrunk
   with the selection morphology (square, rounded kernel), exact without anti-aliasing and on
-  straight edges with it; the smoothing of curved edges is not modelled. To darkest pixel
-  gives an error until its rule is known. CSP's default for Refer other layers / Refer to all
-  layers is To darkest pixel 10, so Brushye's defaults for those sub tools keep scaling off.
+  straight edges with it; the smoothing of curved edges is not modelled.
+- To darkest pixel (`scale_mode=darkest`, the default mode): run 4's rule, exact without
+  anti-aliasing; with it the result is the same binary area (the smoothing is not
+  modelled). Negative N shrinks by the square. Refer other layers / Refer to all layers
+  default to To darkest pixel 10, as in CSP. Chosen, not observed: a pixel beyond the canvas
+  edge counts as darkest (a flat run reaching the edge is entered to the edge); luma is
+  compared unrounded (×1000), so colours whose 8-bit luma would tie are still ordered.
 - Chosen, not observed: 4-connectivity of the region; Close gap as a box closing with boxes
   2, 4, 6, 11, 21 px (reproduces every hold/leak outcome; the fill's shape inside a closed
   gap is approximate); a fill inside a selection is clipped like a stroke.
@@ -175,8 +232,10 @@ on `scale`, (20, 20) on `outlines`); every setting checked on a screenshot.
 - Close gap: the level-5 bound between 20 and 24; how the closed gap is shaped; filling from
   outside with close gap; Fill narrow areas.
 - Straight vs premultiplied comparison; transparent pixels with different RGB.
-- Area scaling: To darkest pixel's general rule (run 3 gives the 1-D behaviour); the
-  smoothing of curved edges with anti-aliasing on; Rectangle and Round with negative N in
-  2-D (erosion by the same kernels, expected).
+- Area scaling: the anti-aliased smoothing of grown outlines (curves for Rectangle/Round,
+  run 3; sides and corners for To darkest pixel, run 4); Rectangle and Round with negative N
+  in 2-D (erosion by the same kernels, expected); To darkest pixel's negative N on shapes
+  where square and round shrinks differ; the field's bounds (20 in To darkest pixel mode);
+  luma rounding (colours whose 8-bit luma ties); the canvas edge in To darkest pixel.
 - Opacity other than 50; Blending modes; Refer multiple / Exclude; Do not fill this color;
   Fill narrow areas; Enclose and fill; Paint unfilled area; Auto select's other sub tools.

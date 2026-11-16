@@ -393,7 +393,7 @@ params! {
         close_gap: Option<u8> = opt "Close gap level 0 (off, default) ..= 5",
         aa: Option<bool> = opt "Anti-aliasing (default true)",
         scale: Option<i64> = opt "Area scaling in px (default 0 = off; negative shrinks)",
-        scale_mode: Option<brushye_core::fill::ScaleMode> = opt "Scaling mode: rectangle or round (darkest: not available yet)",
+        scale_mode: Option<brushye_core::fill::ScaleMode> = opt "Scaling mode: rectangle, round or darkest (To darkest pixel, the default)",
         opacity: Option<u8> = opt "Opacity in percent (default 100)",
         refer: Option<FillRef> = opt "layer (default: the layer itself) or all (the visible image)",
     }
@@ -409,7 +409,7 @@ params! {
         close_gap: Option<u8> = opt "Close gap level 0 (off, default) ..= 5",
         aa: Option<bool> = opt "Anti-aliasing (default true)",
         scale: Option<i64> = opt "Area scaling in px (default 0 = off; negative shrinks)",
-        scale_mode: Option<brushye_core::fill::ScaleMode> = opt "Scaling mode: rectangle or round (darkest: not available yet)",
+        scale_mode: Option<brushye_core::fill::ScaleMode> = opt "Scaling mode: rectangle, round or darkest (To darkest pixel, the default)",
         refer: Option<FillRef> = opt "layer (default) or all (the visible image)",
         mode: Option<SelectMode> = opt "new (default), add, subtract or intersect",
     }

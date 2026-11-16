@@ -216,7 +216,7 @@ pub const ROWS: &[RowInfo] = &[
         SELECTION_CATEGORY,
         0,
         true,
-        "Grow or shrink the filled area by this many pixels (Rectangle or Round; To darkest pixel is not available yet).",
+        "Grow or shrink the filled area by this many pixels (Rectangle, Round, or To darkest pixel: grow into lines up to their darkest pixel).",
     ),
     r(
         Row::ReferMultiple,
@@ -900,9 +900,6 @@ fn draw_control(
             let mut on = p.scale.is_some_and(|v| v != 0);
             if widgets::prop_check(ui, c, i.label, true, en, &mut on) {
                 p.scale = on.then_some(10);
-                if on && p.scale_mode.is_none_or(|m| m == ScaleMode::Darkest) {
-                    p.scale_mode = Some(ScaleMode::Rectangle);
-                }
                 out.changed = true;
             }
             if on {
@@ -916,15 +913,13 @@ fn draw_control(
                     let cells = [
                         (icons::SQUARE, "Rectangle"),
                         (icons::CIRCLE, "Round"),
-                        (icons::DROP_HALF, "To darkest pixel (not available yet)"),
+                        (icons::DROP_HALF, "To darkest pixel"),
                     ];
                     let cur = ScaleMode::ALL
                         .iter()
-                        .position(|&m| m == p.scale_mode.unwrap_or(ScaleMode::Rectangle))
+                        .position(|&m| m == p.scale_mode.unwrap_or(ScaleMode::Darkest))
                         .unwrap_or(0);
-                    if let Some(k) = widgets::segmented(ui, c, &cells, cur)
-                        && ScaleMode::ALL[k] != ScaleMode::Darkest
-                    {
+                    if let Some(k) = widgets::segmented(ui, c, &cells, cur) {
                         p.scale_mode = Some(ScaleMode::ALL[k]);
                         out.changed = true;
                     }

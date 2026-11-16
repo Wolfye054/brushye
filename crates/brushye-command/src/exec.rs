@@ -1302,12 +1302,8 @@ fn fill_params(
             "area scaling {scale} is not in -500..=500"
         )));
     }
-    let mode = scale_mode.unwrap_or(ScaleMode::Rectangle);
-    if scale != 0 && mode == ScaleMode::Darkest {
-        return Err(ExecError(
-            "area scaling: To darkest pixel is not available yet (F-001: rule open)".into(),
-        ));
-    }
+    // CSP's default scaling mode (F-001).
+    let mode = scale_mode.unwrap_or(ScaleMode::Darkest);
     let t = tolerance.unwrap_or(10.0);
     if !(0.0..=100.0).contains(&t) {
         return Err(ExecError(format!("tolerance {t} is not in 0..=100")));

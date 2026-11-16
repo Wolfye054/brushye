@@ -146,9 +146,23 @@ fn area_scaling() {
     );
     assert_eq!(q(&mut s, "?layer.pixel L2 x=13 y=20")[3], 0);
     assert_eq!(q(&mut s, "?layer.pixel L2 x=14 y=20")[3], 255);
-    // To darkest pixel isn't implemented: a clear error, nothing changes.
-    assert!(
-        s.run_line("fill.area L2 x=20 y=20 color=#ff0000 scale=10 scale_mode=darkest")
-            .is_err()
+    // To darkest pixel (the default mode): into the 1 px outline, not past it.
+    run(
+        &mut s,
+        "history.undo\nfill.area L2 x=20 y=20 color=#ff0000 refer=all aa=false scale=10",
     );
+    assert_eq!(q(&mut s, "?layer.pixel L2 x=10 y=20")[3], 255);
+    assert_eq!(q(&mut s, "?layer.pixel L2 x=9 y=20")[3], 0);
+}
+
+#[test]
+fn refer_other_layers_defaults_to_darkest_pixel() {
+    let mut s = Session::new();
+    // Fill: Refer other layers (item 1) and Auto select: Refer to all layers (item 1).
+    for tool in ["fill", "auto_select"] {
+        let txt = q(&mut s, &format!("?subtool tool={tool} item=1")).to_string();
+        assert!(txt.contains("darkest"), "{tool}: {txt}");
+        let txt = q(&mut s, &format!("?subtool tool={tool} item=0")).to_string();
+        assert!(!txt.contains("darkest"), "{tool}: {txt}");
+    }
 }

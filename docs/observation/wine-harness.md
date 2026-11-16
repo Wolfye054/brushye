@@ -126,5 +126,9 @@ Rules learned the hard way:
   Layer > New Raster Layer then adds a third layer and the eye check at the second row hides
   the wrong layer (the exports came out fully covered). Open each input once, or delete the
   extra layer (Layer > Delete Layer) before capturing. Check exports' mean alpha for floods.
+- If the machine restarts with CSP open, CSP reopens the document as "[Restore]" next time,
+  and tool settings changed in that session are not kept (the saved defaults come back).
+  The scratch venv and helper scripts are gone too: rebuild them (python-xlib, numpy,
+  pillow; an `xdrive.py` wrapper with `DISPLAY=:78`).
 - Open PNG inputs with File > Open and a Windows path (`Z:\...`, backslashes); slashes are
   rejected as invalid characters.

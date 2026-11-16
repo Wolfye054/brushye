@@ -227,3 +227,44 @@ for i, (_, w, prof, rot) in enumerate(SM2):
     cx, cy = 10 + (i % 4) * 195, 10 + (i // 4) * 110
     img[cy:cy + 100, cx:cx + 190] = sm2_cell(w, prof, rot)
 save("sm2", img, img, img, 255)
+
+# Tall steps (F-001 run 7), `sm3`: 28 cells as in `sm2` (black rectangles, one feature on the top
+# side, given as a per-column offset of the top edge). Steps of 1–6 px at the centre; 2 px
+# steps at columns 20, 40, 110, 130; 3 px steps at 20, 130; a 2 px step up (mirrored); two 2 px
+# steps 30 apart; a 1 px then a 2 px step; notches 2 px deep 10, 20 wide and 3 px deep 20 wide;
+# bumps 2 px high 10, 20 wide and 3 px high 20 wide; then small black squares 1–6 px and disks
+# r 2, 3, 4, 6 (cells 26–27).
+def tall(w, p, t):
+    return [0] * p + [t] * (w - p)
+def dent(w, n, t, up=False):
+    a = (w - n) // 2
+    out = [0] * a + [t] * n + [0] * (w - a - n)
+    return [t - o for o in out] if up else out
+SM3 = ([tall(150, 75, t) for t in [1, 2, 3, 4, 5, 6]]
+       + [tall(150, p, 2) for p in [20, 40, 110, 130]]
+       + [tall(150, p, 3) for p in [20, 130]]
+       + [tall(150, 75, 2)[::-1]]
+       + [[0] * 60 + [2] * 30 + [4] * 60]
+       + [[0] * 50 + [1] * 50 + [3] * 50]
+       + [dent(150, n, t) for n, t in [(10, 2), (20, 2), (20, 3)]]
+       + [dent(150, n, t, up=True) for n, t in [(10, 2), (20, 2), (20, 3)]])
+def sm3_cell(prof):
+    c = np.full((100, 190), 255, np.uint8)
+    w = len(prof)
+    x0, y0 = (190 - w) // 2, 25
+    for x, o in enumerate(prof):
+        c[y0 + o:y0 + 55, x0 + x] = 0
+    return c
+img = np.full((800, 800), 255, np.uint8)
+for i, prof in enumerate(SM3):
+    cx, cy = 10 + (i % 4) * 195, 10 + (i // 4) * 110
+    img[cy:cy + 100, cx:cx + 190] = sm3_cell(prof)
+# Small shapes in the last row (cells 26, 27 area): squares 1–6 px, disks r 2, 3, 4, 6.
+yy, xx = np.mgrid[0:800, 0:800]
+for i, s in enumerate([1, 2, 3, 4, 5, 6]):
+    x, y = 420 + i * 30, 700
+    img[y:y + s, x:x + s] = 0
+for i, r in enumerate([2, 3, 4, 6]):
+    cx, cy = 440 + i * 80, 755
+    img[(xx + 0.5 - cx) ** 2 + (yy + 0.5 - cy) ** 2 <= r * r] = 0
+save("sm3", img, img, img, 255)

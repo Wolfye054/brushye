@@ -249,11 +249,12 @@ fn area_scaling_to_darkest_pixel() {
     }
 }
 
-/// Runs 3–6: the anti-aliased smoothing of scaled areas (`brushye_core::smooth`) against every
-/// anti-aliased capture. Each row records how close the model is (spec F-001, runs 5–6):
+/// Runs 3–7: the anti-aliased smoothing of scaled areas (`brushye_core::smooth`) against every
+/// anti-aliased capture. Each row records how close the model is (spec F-001, runs 5–7):
 /// soft pixels matched exactly at least, pixels off by more than 1 at most, the largest error.
-/// `sm2` (long runs), the run 3 disk and run 4's 2-D shapes are within ±1–4; `sm1`'s large
-/// errors are its 2–3 px steps and small shapes (open in the spec); `dk1`'s are two corners.
+/// `sm3` (tall steps) is within 9, `sm2` (long runs) within 3, the run 3 disk and run 4's 2-D
+/// shapes within 1–4; `sm1`'s large errors are a 1 px wide spike and single pixels at its
+/// triangles' tips, `dk1`'s two corners (open in the spec).
 #[test]
 fn area_scaling_smoothing() {
     use ScaleMode::{Darkest, Rectangle, Round};
@@ -267,7 +268,37 @@ fn area_scaling_smoothing() {
         usize,
         u8,
     );
-    let cases: [Case; 16] = [
+    let cases: [Case; 19] = [
+        (
+            "sm3",
+            "run7/sm3_rect1_aa",
+            (5, 5),
+            Rectangle,
+            1,
+            1665,
+            26,
+            9,
+        ),
+        (
+            "sm3",
+            "run7/sm3_rect3_aa",
+            (5, 5),
+            Rectangle,
+            3,
+            1616,
+            27,
+            9,
+        ),
+        (
+            "sm3",
+            "run7/sm3_darkest1_aa",
+            (5, 5),
+            Darkest,
+            1,
+            1986,
+            69,
+            5,
+        ),
         (
             "sm2",
             "run6/sm2_rect1_aa",
@@ -294,9 +325,9 @@ fn area_scaling_smoothing() {
             (20, 20),
             Rectangle,
             1,
-            1849,
-            466,
-            154,
+            2119,
+            192,
+            135,
         ),
         (
             "sm1",
@@ -304,9 +335,9 @@ fn area_scaling_smoothing() {
             (20, 20),
             Round,
             3,
-            1594,
-            221,
-            154,
+            1734,
+            79,
+            85,
         ),
         (
             "sm1",
@@ -334,9 +365,9 @@ fn area_scaling_smoothing() {
             (20, 20),
             Rectangle,
             -1,
-            1948,
-            429,
-            154,
+            2319,
+            85,
+            122,
         ),
         (
             "sm1",
@@ -344,9 +375,9 @@ fn area_scaling_smoothing() {
             (20, 20),
             Rectangle,
             -3,
-            1983,
-            404,
-            154,
+            2354,
+            60,
+            122,
         ),
         (
             "sm1",
@@ -364,9 +395,9 @@ fn area_scaling_smoothing() {
             (20, 20),
             Rectangle,
             10,
-            895,
-            235,
-            154,
+            1035,
+            93,
+            85,
         ),
         (
             "scale",

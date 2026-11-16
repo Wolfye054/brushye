@@ -16,7 +16,13 @@
 //!   corner is **translated ¼ px along the long run, away from the step** (monotone
 //!   staircases excepted, run 6).
 //!
-//! Not modelled (open in F-001): 2–3 px steps (CSP treats them like 1 px steps), and CSP's ±1 arithmetic differences.
+//! - a **tall step** (2–6 px, between clearly longer runs heading the same way, run 7): the
+//!   upper run stays flat to ½ px before the step, then one straight cut through the step's
+//!   midpoint meets the lower run's line, which runs from ½ px above the step's lower end
+//!   through the lower run's midpoint on to its far corner.
+//!
+//! Not modelled (open in F-001): steps taller than 6 px, small shapes, and CSP's ±1
+//! arithmetic differences.
 //! Chosen, not observed: beyond the canvas edge the area is extended by repeating the edge
 //! pixels, so the canvas border itself is never smoothed.
 
@@ -207,6 +213,8 @@ fn intersect(p: P, u: P, q: P, v: P) -> Option<P> {
 enum V {
     Mid(usize),
     Corner(usize),
+    /// A point of a tall step's straight cut.
+    Tall,
 }
 
 /// The smoothed polygon of one outline loop (F-001 runs 5–6).
@@ -226,9 +234,100 @@ fn polygon(lp: &[[i64; 2]]) -> Vec<P> {
     // A short run whose neighbours run in opposite directions turns the outline around (the
     // end of a 1 px line, a tip): the long runs beside it stay straight to it.
     let turn = |k: isize| !long(k) && at(k - 1).d == mul(at(k + 1).d, -1.0);
-    let kept = |k: isize| (long(k) && long(k + 1)) || turn(k) || turn(k + 1);
+    // A tall step (run 7): a 2–6 px run between two clearly longer runs heading the same way.
+    let tall = |k: isize| {
+        let t = at(k).len;
+        (2..=6).contains(&t)
+            && at(k - 1).d == at(k + 1).d
+            && at(k - 1).len >= (t + 1).max(4)
+            && at(k + 1).len >= (t + 1).max(4)
+    };
+    // Its upper corner is the one where the outline turns right, around the shape; when that
+    // is the corner at its start, the run before it is the upper run.
+    let upper_first = |k: isize| cross(at(k - 1).d, at(k).d) > 0.0;
+    // The upper run's offset from the step (−1: the run before it), and the points ½ px from
+    // the step's upper and lower ends.
+    let du = |k: isize| if upper_first(k) { -1 } else { 1 };
+    let top_pt = |k: isize| {
+        if upper_first(k) {
+            add(at(k).a, mul(at(k).d, 0.5))
+        } else {
+            sub(at(k).b, mul(at(k).d, 0.5))
+        }
+    };
+    let low_pt = |k: isize| {
+        if upper_first(k) {
+            sub(at(k).b, mul(at(k).d, 0.5))
+        } else {
+            add(at(k).a, mul(at(k).d, 0.5))
+        }
+    };
+    // A run beside a tall step is sloped when the outline past its far end goes on the way
+    // the step goes (another step down, or a corner turning that way); otherwise it is flat.
+    let up_sloped = |k: isize| at(k + 2 * du(k)).d == at(k).d;
+    let low_sloped = |k: isize| at(k - 2 * du(k)).d == at(k).d;
+    let kept =
+        |k: isize| ((long(k) && long(k + 1)) || turn(k) || turn(k + 1)) && !tall(k) && !tall(k + 1);
+    // A tall step's anchor for the run beside it on side `side` (−1: the run before it): the
+    // point that run's line comes from, or None when the run is flat there.
+    let tall_anchor = |k: isize, side: isize| -> Option<P> {
+        if side == du(k) {
+            up_sloped(k).then(|| top_pt(k))
+        } else {
+            low_sloped(k).then(|| low_pt(k))
+        }
+    };
+    // The point a run's line comes from at its start (None: the run stays flat there).
+    let from_prev = |k: isize| -> Option<P> {
+        if tall(k - 1) {
+            tall_anchor(k - 1, 1)
+        } else {
+            (!kept(k - 1)).then(|| md(k - 1))
+        }
+    };
+    // The point a run's line goes to past its end.
+    let to_next = |k: isize| -> Option<P> {
+        if tall(k + 1) {
+            tall_anchor(k + 1, -1)
+        } else {
+            (!kept(k)).then(|| md(k + 1))
+        }
+    };
     let mut verts: Vec<(V, P)> = Vec::with_capacity(2 * m);
     for k in 0..m as isize {
+        if tall(k) {
+            let lower = k - du(k);
+            // The lower run's line: through ½ px above the step's lower end and its midpoint
+            // when sloped, else along the run itself.
+            let corner_l = if upper_first(k) { at(k).b } else { at(k).a };
+            let (lp, ld) = if low_sloped(k) {
+                (low_pt(k), sub(md(lower), low_pt(k)))
+            } else {
+                (corner_l, at(lower).d)
+            };
+            let pts = if up_sloped(k) {
+                // The sloped upper run arrives ½ px below the step's top; the step then runs
+                // straight down to the lower line.
+                [top_pt(k), if low_sloped(k) { low_pt(k) } else { corner_l }]
+            } else {
+                // A flat upper run: straight to ½ px before the step, then one cut through
+                // the step's midpoint to the lower line.
+                let up = if upper_first(k) {
+                    sub(at(k - 1).b, mul(at(k - 1).d, 0.5))
+                } else {
+                    add(at(k + 1).a, mul(at(k + 1).d, 0.5))
+                };
+                [up, intersect(up, sub(md(k), up), lp, ld).unwrap_or(md(k))]
+            };
+            if upper_first(k) {
+                verts.push((V::Tall, pts[0]));
+                verts.push((V::Tall, pts[1]));
+            } else {
+                verts.push((V::Tall, pts[1]));
+                verts.push((V::Tall, pts[0]));
+            }
+            continue;
+        }
         verts.push((V::Mid(k as usize), md(k)));
         if !kept(k) {
             continue;
@@ -237,23 +336,22 @@ fn polygon(lp: &[[i64; 2]]) -> Vec<P> {
         // Run k reached from a step: continue that line to the next run's line if it grows
         // the area (moves the boundary to the shape's side, the right).
         let qk = (!kept(k - 1))
-            .then(|| intersect(md(k), sub(md(k), md(k - 1)), c, at(k + 1).d))
-            .flatten()
+            .then_some(())
+            .and_then(|_| from_prev(k))
+            .and_then(|a| intersect(md(k), sub(md(k), a), c, at(k + 1).d))
             .filter(|q| dot(sub(*q, c), right(at(k).d)) > 1e-9);
         let qk1 = (!kept(k + 1))
-            .then(|| intersect(md(k + 1), sub(md(k + 1), md(k + 2)), c, at(k).d))
-            .flatten()
+            .then_some(())
+            .and_then(|_| to_next(k + 1))
+            .and_then(|a| intersect(md(k + 1), sub(md(k + 1), a), c, at(k).d))
             .filter(|q| dot(sub(*q, c), right(at(k + 1).d)) > 1e-9);
         let p = match (qk, qk1) {
             (None, None) => c,
             (Some(q), None) | (None, Some(q)) => q,
-            (Some(_), Some(_)) => intersect(
-                md(k),
-                sub(md(k), md(k - 1)),
-                md(k + 1),
-                sub(md(k + 1), md(k + 2)),
-            )
-            .unwrap_or(c),
+            (Some(_), Some(_)) => from_prev(k)
+                .zip(to_next(k + 1))
+                .and_then(|(a, b)| intersect(md(k), sub(md(k), a), md(k + 1), sub(md(k + 1), b)))
+                .unwrap_or(c),
         };
         verts.push((V::Corner(k as usize), p));
     }
@@ -281,7 +379,9 @@ fn polygon(lp: &[[i64; 2]]) -> Vec<P> {
         } else {
             run as isize - 1
         };
-        if long(far) {
+        if tall(far) {
+            continue; // a line continued into a tall step
+        } else if long(far) {
             // The run's far end is a kept corner: no translation when the run's line was
             // continued to it (the corner moved off the grid point).
             let far_v = if after { (i + 2) % n } else { (i + n - 1) % n };

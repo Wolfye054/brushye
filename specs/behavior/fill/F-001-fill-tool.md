@@ -6,7 +6,7 @@
   capture; not yet: Enclose and fill, Paint unfilled area, Selection for referred layers) /
   **observed** (run 1: settings layout, tolerance metric, anti-aliasing, close gap;
   run 2: area scaling, connected off, opacity, editing-layer mixing, Auto select;
-  run 3: Area scaling modes; run 4: To darkest pixel's rule; runs 5–6: the anti-aliased
+  run 3: Area scaling modes; run 4: To darkest pixel's rule; runs 5–7: the anti-aliased
   smoothing of scaled areas, mostly; open items below)
 - CSP version: 1.13.2 (PRO, 64-bit, build 202301210208)
 - Date / method / observer: 2026-11-15 / automated-Wine (pen display :78, XTEST mouse) /
@@ -302,6 +302,42 @@ lines are fitted to it.
     two notions differ;
   - small shapes (run 5's 1–5 px squares, r 3–12 disks) not yet compared.
 
+## Run 7 (2026-11-16, pen display :78): tall steps
+Data in `data/run7/`; input `sm3` (`tools/observe/make_fill_inputs.py`): 21 cells as in run 6
+(black rectangles 150×54, one feature on the top side, clicked at canvas (5, 5)): a step of
+1–6 px at column 75; 2 px steps at 20, 40, 110, 130; 3 px steps at 20, 130; a 2 px step up;
+two 2 px steps 30 apart; a 1 px then a 2 px step 50 apart; notches 2 px deep 10, 20 wide
+and 3 px deep 20 wide; bumps 2 px high 10, 20 wide and 3 px high 20 wide; and black squares
+1–6 px and disks r 2, 3, 4, 6. Captures: Rectangle 1 and 3, To darkest pixel 1, anti-aliasing
+on and off, and unscaled. Brushye's anti-aliasing-off areas equal CSP's (0 pixels) in all
+three. (The machine restarted after the captures, with CSP still open; the exports were
+already saved. CSP then reopened a recovered copy of `sm3`, and its tool settings were the
+saved defaults, checked on screenshots.)
+- **To darkest pixel** shrinks with the cross, so every tall step becomes a 45° staircase of
+  1 px steps; the run 5–6 model already matches it (within 1–5).
+- **Rectangle, a step of t ≥ 2 px between long runs** (the same for every t from 2 to 6 and
+  every position; Rectangle 3 identical to Rectangle 1):
+  - **upper run** (the step's corner where the outline turns around the shape): flat up
+    to ½ px before the step, then **one straight cut** from there through the step's
+    midpoint. The pixel just before the step reads 64; 85, 11; 96, 32; 102, 51, 6;
+    106, 64, 21 for t = 2–6 (a line from (s − ½, top) to (s, top + t/2)).
+  - **lower run**: one line from ½ px above the step's lower end, (s, bottom − ½), through
+    the run's midpoint to its far corner ½ px past (as for a 1 px step).
+  - the cut meets the lower line 0.25–0.42 px past the step (0.5 − 0.5/t); fitted, within
+    7 (t = 2) to 1 (t = 6) of CSP's values.
+- **A run beside a tall step is sloped only when the outline past its far end goes on the
+  way the step goes** (another step the same way, or a corner turning that way), else flat:
+  - notches 2–3 px deep: the inner run stays **flat**; each step is a symmetric cut from
+    (s − ½, top) through its midpoint to (s + ½, bottom); column heights 26.25 / 27.75
+    either side of the step;
+  - two 2 px steps down: the middle run is one line from ½ px above the first step's
+    bottom, through its midpoint, to ½ px below the second step's top; then straight down
+    the second step to ½ px above its bottom, where the lower run's line starts;
+  - a 1 px then a 2 px step: one straight line through the 1 px step's midpoint and the
+    middle run's midpoint to ½ px below the tall step's top, then the same.
+- **Squares 1–6 px and disks r 2–6:** after Rectangle 1 or 3 the squares are gone or exact;
+  Brushye matches all of them (0 pixels off by more than 1).
+
 ## Implementation notes (Brushye)
 - Anti-aliasing border: CSP softens only the **4-neighbours** of the region (diagonal
   neighbours stay 0: 184 ring pixels at t = 0), and at t ≥ 50 only region pixels with a
@@ -323,14 +359,16 @@ lines are fitted to it.
   the end of a 1 px black line left inside run 3's 3 px bar (CSP: no soft pixels; without the
   rule the whole line was slanted) and the triangles' tips in run 5. With it, run 3's bars
   are exact and run 5's To darkest pixel errors fall from 946 to 93 pixels.
+  - Tall steps (run 7) for steps of 2–6 px whose neighbouring runs are at least 4 px and
+    longer than the step: the cut, the lower line, and the sloped-or-flat choice above.
   - Agreement, per capture (`area_scaling_smoothing` in `observed_fill.rs`, soft pixels
-    exact / pixels off by more than 1 / largest error): `sm2` Rectangle 1 2378/105/3,
+    exact / pixels off by more than 1 / largest error): `sm3` Rectangle 1 1665/26/9,
+    Rectangle 3 1616/27/9, To darkest pixel 1 1986/69/5; `sm2` Rectangle 1 2378/105/3,
     Rectangle 3 2317/108/3; run 3 disk (Rectangle 5, Round 10, To darkest pixel 10) at most
     16 pixels off by 2; run 4 `dk3` 912/0/1, `outlines` 2744/16/4; `dk1` 2244/24/112 (the
     diamond's 45° corner smoothing is drawn at two left corners where CSP leaves them sharp);
-    `sm1` 895–2277 exact, 84–466 off, up to 154: its 2–3 px steps (run 5 `step2`, `step3`,
-    the 2 px bumps). Treating 2–3 px steps between long runs as 1 px steps was tried and
-    made them worse (errors up to 255); it is not the rule.
+    `sm1` 1035–2354 exact, 60–192 off, up to 135: run 5's narrow bump (a 1 px wide, 2 px
+    tall spike after scaling) and single pixels at the triangles' tips.
   - Chosen, not observed: beyond the canvas edge the area repeats its edge pixels, so the
     canvas border is never smoothed. Coverage is exact area, rounded half up.
   - Cost: about 0.3 s for a 4000×4000 area (release build).
@@ -343,8 +381,9 @@ lines are fitted to it.
 - Close gap: the level-5 bound between 20 and 24; how the closed gap is shaped; filling from
   outside with close gap; Fill narrow areas.
 - Straight vs premultiplied comparison; transparent pixels with different RGB.
-- Area scaling smoothing (runs 5–6): 2–3 px steps; small shapes (1–5 px squares, r 3–12
-  disks); the two `dk1` corners; the ±1 arithmetic differences; Rectangle and Round with negative N
+- Area scaling smoothing (runs 5–7): 1 px wide spikes (run 5's narrow bump); single pixels at
+  acute tips; steps taller than 6 px; the cut's last few units at t = 2–3 (up to 9); the
+  two `dk1` corners; the ±1 arithmetic differences; Rectangle and Round with negative N
   in 2-D (erosion by the same kernels, expected); To darkest pixel's negative N on shapes
   where square and round shrinks differ; the field's bounds (20 in To darkest pixel mode);
   luma rounding (colours whose 8-bit luma ties); the canvas edge in To darkest pixel.

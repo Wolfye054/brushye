@@ -388,4 +388,5 @@ saved defaults, checked on screenshots.)
   where square and round shrinks differ; the field's bounds (20 in To darkest pixel mode);
   luma rounding (colours whose 8-bit luma ties); the canvas edge in To darkest pixel.
 - Opacity other than 50; Blending modes; Refer multiple / Exclude; Do not fill this color;
-  Fill narrow areas; Enclose and fill; Paint unfilled area; Auto select's other sub tools.
+  Fill narrow areas; Paint unfilled area; Auto select's other sub tools. Enclose and fill:
+  spec F-002.

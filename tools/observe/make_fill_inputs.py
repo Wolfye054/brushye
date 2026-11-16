@@ -268,3 +268,56 @@ for i, r in enumerate([2, 3, 4, 6]):
     cx, cy = 440 + i * 80, 755
     img[(xx + 0.5 - cx) ** 2 + (yy + 0.5 - cy) ** 2 <= r * r] = 0
 save("sm3", img, img, img, 255)
+
+# Enclose and fill (F-002 run 1), `en1`: white with hard 3 px black outlines: squares 100 px at
+# (60, 60), (220, 60), (380, 60); a 40 px square at (560, 80); a square 160 px with a 60 px
+# square inside it at (60, 260); a 100 px square with a 10 px gap in its top side at (300, 280);
+# a gray (128) filled 100 px square at (480, 280); a ring r 50 at (690, 330); and a row of
+# 30 px squares 20 px apart along y = 520 from x = 60.
+def outline(img, x, y, s, v=0, t=3):
+    img[y:y + t, x:x + s] = v
+    img[y + s - t:y + s, x:x + s] = v
+    img[y:y + s, x:x + t] = v
+    img[y:y + s, x + s - t:x + s] = v
+img = np.full((800, 800), 255, np.uint8)
+for x in (60, 220, 380):
+    outline(img, x, 60, 100)
+outline(img, 560, 80, 40)
+outline(img, 60, 260, 160)
+outline(img, 110, 310, 60)
+outline(img, 300, 280, 100)
+img[280:283, 345:355] = 255
+img[280:380, 480:580] = 128
+yy, xx = np.mgrid[0:800, 0:800]
+rr = np.hypot(xx + 0.5 - 690, yy + 0.5 - 330)
+img[(rr >= 47) & (rr <= 50)] = 0
+for i in range(12):
+    outline(img, 60 + i * 50, 520, 30)
+save("en1", img, img, img, 255)
+
+# Enclose and fill, Target color (F-002 run 1), `en2`: line art on a transparent background
+# (RGBA 0,0,0,0): 120 px squares with 3 px outlines at y = 60: A black (x 60), B black at
+# alpha 128 (x 240), C red (x 420), D black with an opaque white inside (x 600); at y = 260:
+# E black with an opaque gray (128) 40 px square in the middle (x 60), F an anti-aliased black
+# ring r 50, 3 px (4x supersampled) centred at (360, 320).
+img = np.zeros((800, 800, 4), np.uint8)
+def outline4(x, y, s, c, t=3):
+    img[y:y + t, x:x + s] = c
+    img[y + s - t:y + s, x:x + s] = c
+    img[y:y + s, x:x + t] = c
+    img[y:y + s, x + s - t:x + s] = c
+outline4(60, 60, 120, (0, 0, 0, 255))
+outline4(240, 60, 120, (0, 0, 0, 128))
+outline4(420, 60, 120, (255, 0, 0, 255))
+img[63:177, 603:717] = (255, 255, 255, 255)
+outline4(600, 60, 120, (0, 0, 0, 255))
+outline4(60, 260, 120, (0, 0, 0, 255))
+img[300:340, 100:140] = (128, 128, 128, 255)
+ss = 4
+yy, xx = (np.mgrid[0:800 * ss, 0:800 * ss] + 0.5) / ss
+d = np.hypot(xx - 360, yy - 320)
+cov = ((d >= 47) & (d <= 50)).reshape(800, ss, 800, ss).mean(axis=(1, 3))
+a = np.round(cov * 255).astype(np.uint8)
+m = a > 0
+img[m, 3] = a[m]
+Image.fromarray(img, "RGBA").save(os.path.join(out, "en2.png"))

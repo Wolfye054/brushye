@@ -321,3 +321,21 @@ a = np.round(cov * 255).astype(np.uint8)
 m = a > 0
 img[m, 3] = a[m]
 Image.fromarray(img, "RGBA").save(os.path.join(out, "en2.png"))
+
+# Paint unfilled area (F-003 run 1), `un1`: white with hard black lines: a grid of 10×10 cells,
+# 20 px pitch with 2 px lines, at (60, 60); a 200 px square outline (3 px) at (400, 60); a row
+# of tiny white holes (1, 2, 3, 4, 6, 8 px) in a black bar at y 400–420 from x 60; a
+# 200 px square outline at (400, 400) holding a 100 px gray (128) square in its middle.
+img = np.full((800, 800), 255, np.uint8)
+for k in range(11):
+    img[60 + 20 * k:62 + 20 * k, 60:262] = 0
+    img[60:262, 60 + 20 * k:62 + 20 * k] = 0
+outline(img, 400, 60, 200)
+img[400:420, 60:330] = 0
+x = 70
+for s in [1, 2, 3, 4, 6, 8]:
+    img[410 - s // 2:410 - s // 2 + s, x:x + s] = 255
+    x += 40
+outline(img, 400, 400, 200)
+img[450:550, 450:550] = 128
+save("un1", img, img, img, 255)

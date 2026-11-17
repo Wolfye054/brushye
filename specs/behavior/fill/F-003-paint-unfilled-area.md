@@ -1,5 +1,6 @@
 # F-003 Fill tool: Paint unfilled area
-- Status: **observed** (run 1: settings, the region rule, the dab footprint; open items below)
+- Status: **observed** (run 1: settings, the region rule; run 2: the stroke's footprint;
+  open items below)
 - CSP version: 1.13.2 (PRO, 64-bit, build 202301210208)
 - Date / method / observer: 2026-11-16 / automated-Wine (pen display :78, XTEST mouse) /
   Claude
@@ -63,10 +64,33 @@ of 1, 2, 3, 4, 6, 8 px; a square outline at (400, 400) around a gray (128) squar
   covered when **its centre lies within size / 2 of the tap** (28.28 ≤ 28.5, > 28; whole
   pixels within the radius would have needed size 58).
 
+## Run 2 (2026-11-16, pen display :78): the stroke's footprint
+Data in `data/unfilled/run2/`; input `dab1` (`tools/observe/make_fill_inputs.py`): a
+full-canvas black/white checkerboard. No pixel has a 4-neighbour of its colour, so every
+pixel is its own region and **the export is the footprint itself**. Defaults (brush 20,
+anti-aliasing off) unless stated.
+- **D1**, a tap at (200, 200): an 18 px wide near-disk centred on the pixel corner
+  (200, 200), 260 px (rows 6, 10, 14, 14, 16, 16, 18 × 6, 16, 16, 14, 14, 10, 6).
+- **D2 / D3**, the same 400 px horizontal drag with 10 coarse moves (40 px apart) and with
+  400 moves 1 px apart: **identical** (7460 px). The input's sampling does not matter.
+- **The footprint is the stroke as Brushye's engine paints it with anti-aliasing off
+  (`brush.stroke … aa=none`, samples at the pointer's canvas positions as integers), shrunk
+  by one pixel with the 4-neighbourhood** (a pixel counts when it and its four neighbours
+  are painted): 0 pixels different on D1 and D2/D3; on the 60 px drag (D5) and a diagonal
+  drag (D4), 12 and 6 pixels differ, all at the stroke's end (CSP's last dab reaches about
+  1 px further). Shrinking by the 8-neighbourhood is 20 px off on D1.
+- **Run 1 again with this footprint:** with F-002's regions (tolerance 80), all 13 run 1
+  captures are exact, including S1 and S6 (brush 20), which filled nothing: their cells
+  touch the shrunk footprint's edge.
+- **Gap:** the Stroke category's Gap has four presets, the third selected by default. With
+  the second (**D6**) the band is the same and only its end moves (by 1 px); CSP's default
+  equals Brushye's `gap=normal` (and `narrow`) exactly, the second preset Brushye's `wide`
+  within 6 px (at the end).
+- (Pointer positions: in run 1 a Real G-Pen click at screen (1043, 663) put its dab's
+  centroid at (500.48, 500.58), while this tool's tap at screen (743, 363) is centred on
+  (200, 200): open whether the two tools read the pointer differently.)
+
 ## Open questions
-- **Drags with a small brush:** S1 (cells 9 px or less from the stroke's line, radius 10)
-  and S6 filled nothing, though a continuous band of radius 10 covers their cells; likely
-  the footprint is the stroke's dabs (spaced by Gap), not a continuous band. Needs strokes
-  of known dab spacing.
+- The stroke's end (the last dab's position, ~1 px); the pointer convention (above).
 - Target color, Tolerance (80 by default), Close gap and Area scaling with this sub tool.
 - Brush shapes other than the round tip; anti-aliasing on; opacity; the reference options.

@@ -339,3 +339,10 @@ for s in [1, 2, 3, 4, 6, 8]:
 outline(img, 400, 400, 200)
 img[450:550, 450:550] = 128
 save("un1", img, img, img, 255)
+
+# Dab footprint (F-003 run 2), `dab1`: a full-canvas checkerboard (white where x + y is even).
+# Every pixel is its own region (no 4-neighbour of like colour), so Paint unfilled area fills
+# exactly the pixels its stroke covers: the export is the footprint.
+yy, xx = np.mgrid[0:800, 0:800]
+img = np.where((xx + yy) % 2 == 0, 255, 0).astype(np.uint8)
+save("dab1", img, img, img, 255)

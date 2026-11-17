@@ -1,6 +1,8 @@
 # F-003 Fill tool: Paint unfilled area
-- Status: **observed** (run 1: settings, the region rule; run 2: the stroke's footprint;
-  open items below)
+- Status: **implemented** (2026-11-16: `fill.unfilled`, the Paint unfilled area sub tool;
+  exact on all 13 run 1 captures and the run 2 tap and straight drags,
+  `crates/brushye-core/tests/observed_unfilled.rs`) / **observed** (run 1: settings, the
+  region rule; run 2: the stroke's footprint; open items below)
 - CSP version: 1.13.2 (PRO, 64-bit, build 202301210208)
 - Date / method / observer: 2026-11-16 / automated-Wine (pen display :78, XTEST mouse) /
   Claude
@@ -89,6 +91,21 @@ anti-aliasing off) unless stated.
 - (Pointer positions: in run 1 a Real G-Pen click at screen (1043, 663) put its dab's
   centroid at (500.48, 500.58), while this tool's tap at screen (743, 363) is centred on
   (200, 200): open whether the two tools read the pointer differently.)
+
+## Implementation notes (Brushye)
+- `brushye_core::fill::unfilled` and the command `fill.unfilled LAYER color=#rrggbb size=
+  samples=[x,y,p,t;…] [gap= target= tolerance= aa= scale= scale_mode= opacity= refer=]`;
+  the command's defaults are the sub tool's (Treat semi-transparent as transparent,
+  tolerance 80, no Area scaling, no anti-aliasing, gap normal, the visible image). The app
+  records the pointer while the button is down (a brush-wide preview) and sends one
+  `fill.unfilled` on release; its Tool property has Target color, Tolerance, Area scaling,
+  Refer multiple and Brush Size, as observed.
+- Footprint: the samples floored to integers, rendered by the brush engine (round tip, size,
+  anti-aliasing off, the gap), shrunk by the 4-neighbourhood; then F-002's regions.
+- Chosen, not observed: pixels past the canvas edge count as painted when shrinking; pen
+  pressure, Correction and Starting and ending are ignored (the mouse defaults); Target
+  color, tolerance, Area scaling and anti-aliasing act as in Enclose and fill.
+- Known difference: the end of a drag (CSP's last dab ~1 px further; 6 and 12 px on D4/D5).
 
 ## Open questions
 - The stroke's end (the last dab's position, ~1 px); the pointer convention (above).

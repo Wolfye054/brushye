@@ -1166,6 +1166,55 @@ fn edit(d: &mut Document, cmd: &Command, pressure_curve: &Curve) -> Result<(), E
             }
             paint_coverage(d, p.layer, &cov, p.color)?;
         }
+        Command::FillUnfilled(p) => {
+            if p.color.0[3] != 255 {
+                return Err(ExecError(
+                    "fill.unfilled: color must be opaque (#rrggbb)".into(),
+                ));
+            }
+            if !(p.size.is_finite() && (1.0..=2000.0).contains(&p.size)) {
+                return Err(ExecError(format!(
+                    "fill.unfilled: size {} is not in 1..=2000",
+                    p.size
+                )));
+            }
+            let t = p.tolerance.unwrap_or(80.0);
+            if !(0.0..=100.0).contains(&t) {
+                return Err(ExecError(format!("tolerance {t} is not in 0..=100")));
+            }
+            let scale = p.scale.unwrap_or(0);
+            if !(-500..=500).contains(&scale) {
+                return Err(ExecError(format!(
+                    "area scaling {scale} is not in -500..=500"
+                )));
+            }
+            let ep = brushye_core::fill::EncloseParams {
+                target: p.target.unwrap_or_default(),
+                tolerance: t,
+                aa: p.aa.unwrap_or(false),
+                scale: scale as i32,
+                scale_mode: p.scale_mode.unwrap_or_default(),
+            };
+            let (w, h) = (d.width, d.height);
+            let reference = fill_reference(d, p.layer, Some(p.refer.unwrap_or(FillRef::All)))?;
+            let mut cov = brushye_core::fill::unfilled(
+                &reference,
+                w,
+                h,
+                &p.samples.0,
+                p.size,
+                p.gap.unwrap_or_default(),
+                &ep,
+            )
+            .map_err(|e| ExecError(format!("fill.unfilled: {e}")))?;
+            if let Some(o) = p.opacity {
+                if o > 100 {
+                    return Err(DocError::OpacityOutOfRange(u32::from(o)).into());
+                }
+                brushye_core::fill::apply_opacity(&mut cov, o);
+            }
+            paint_coverage(d, p.layer, &cov, p.color)?;
+        }
         Command::SelectAuto(p) => {
             let fp = fill_params(
                 p.tolerance,

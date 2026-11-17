@@ -414,6 +414,23 @@ params! {
     }
 }
 params! {
+    /// Paint unfilled area: fill every region lying entirely inside a brush stroke (F-003).
+    pub struct FillUnfilled {
+        layer: LayerId = pos "Layer to paint (and to read with refer=layer)",
+        color: Rgba8 = key "Colour #rrggbb",
+        size: f64 = key "Brush size (diameter) in px (the sub tool's default 20)",
+        samples: Samples = key "Pointer samples (b64:… or [x,y,p,t;…]) in canvas pixels",
+        gap: Option<Gap> = opt "Dab gap: narrow, normal (default), wide, or percent of size",
+        target: Option<brushye_core::fill::EncloseTarget> = opt "Target color (default semi_as_transparent, CSP's default)",
+        tolerance: Option<f64> = opt "Tolerance in percent (default 80)",
+        aa: Option<bool> = opt "Anti-aliasing (default false)",
+        scale: Option<i64> = opt "Area scaling in px (default 0 = off; negative shrinks)",
+        scale_mode: Option<brushye_core::fill::ScaleMode> = opt "Scaling mode (default darkest)",
+        opacity: Option<u8> = opt "Opacity in percent (default 100)",
+        refer: Option<FillRef> = opt "all (default: the visible image) or layer",
+    }
+}
+params! {
     /// Auto select: select the area around a canvas point (F-001; same area as the Fill tool).
     pub struct SelectAuto {
         layer: LayerId = pos "Layer to read with ref=layer",
@@ -860,6 +877,7 @@ registry! {
         SelectAuto(SelectAuto) = "select.auto" v 1 Undoable "Auto select the area around a point",
         FillArea(FillArea) = "fill.area" v 1 Undoable "Fill the area around a point (Fill tool)",
         FillEnclose(FillEnclose) = "fill.enclose" v 1 Undoable "Fill the regions inside a lasso (Enclose and fill)",
+        FillUnfilled(FillUnfilled) = "fill.unfilled" v 1 Undoable "Fill the regions inside a brush stroke (Paint unfilled area)",
         SelectFromLayer(SelectFromLayer) = "select.from_layer" v 1 Undoable "Selection from a layer's transparency",
         EditFill(EditFill) = "edit.fill" v 1 Undoable "Fill the selection (or layer) with a colour",
         EditDelete(EditDelete) = "edit.delete" v 1 Undoable "Clear the selection (or layer)",

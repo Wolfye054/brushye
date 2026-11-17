@@ -23,6 +23,11 @@
 //!   darkest pixel (`darkest_grow`), exact without anti-aliasing; shrinking (N < 0) is the
 //!   Rectangle shrink. With anti-aliasing CSP smooths the grown outline (not modelled).
 
+use crate::brush::{self, Aa, BrushError, BrushSettings, Gap};
+use crate::document::{Layer, LayerKind};
+use crate::ids::LayerId;
+use crate::input::Sample;
+
 /// Box sizes of the Close gap levels 1–5: a gap of up to `k − 1` px is closed.
 const GAP_BOX: [usize; 5] = [2, 4, 6, 11, 21];
 
@@ -301,6 +306,18 @@ pub struct EncloseParams {
     pub scale_mode: ScaleMode,
 }
 
+impl EncloseParams {
+    /// Paint unfilled area's defaults (F-003): tolerance 80, no Area scaling, no
+    /// anti-aliasing.
+    pub fn unfilled() -> Self {
+        Self {
+            tolerance: 80.0,
+            scale: 0,
+            ..Self::default()
+        }
+    }
+}
+
 impl Default for EncloseParams {
     fn default() -> Self {
         Self {
@@ -358,12 +375,78 @@ pub fn polygon_inside(pts: &[[f64; 2]], w: u32, h: u32) -> Vec<bool> {
 /// Not modelled (open): Close gap (it did not hold a 10 px gap in run 1), the reference
 /// options, anti-aliasing without scaling (binary).
 pub fn enclose(reference: &[u8], w: u32, h: u32, pts: &[[f64; 2]], p: &EncloseParams) -> Vec<u8> {
+    enclosed_regions(reference, w, h, &polygon_inside(pts, w, h), p)
+}
+
+/// Paint unfilled area (F-003): the area filled by a stroke of a round brush `size` px wide
+/// (`samples` in canvas pixels). The stroke's **footprint** is the stroke as the brush engine
+/// paints it without anti-aliasing, the samples at the pointer's integer canvas positions
+/// (`⌊x⌋, ⌊y⌋`), shrunk by one pixel with the 4-neighbourhood (a pixel counts when it and its
+/// four neighbours are painted; run 2, exact on a tap and on drags). Then every region of
+/// Enclose and fill lying entirely inside the footprint is filled (run 1; all 13 captures
+/// exact). Chosen, not observed: pixels past the canvas edge count as painted for the shrink.
+pub fn unfilled(
+    reference: &[u8],
+    w: u32,
+    h: u32,
+    samples: &[Sample],
+    size: f64,
+    gap: Gap,
+    p: &EncloseParams,
+) -> Result<Vec<u8>, BrushError> {
+    let (wu, hu) = (w as usize, h as usize);
+    let samples: Vec<Sample> = samples
+        .iter()
+        .map(|s| Sample {
+            x: s.x.floor(),
+            y: s.y.floor(),
+            ..*s
+        })
+        .collect();
+    let settings = BrushSettings {
+        size,
+        aa: Aa::None,
+        gap,
+        ..BrushSettings::default()
+    };
+    let mut tmp = Layer::new(LayerId(0), "footprint", LayerKind::Raster);
+    brush::stroke(&mut tmp, (w, h), &settings, &samples)?;
+    let painted: Vec<bool> = (0..wu * hu)
+        .map(|i| tmp.pixel((i % wu) as u32, (i / wu) as u32)[3] > 0)
+        .collect();
+    let at = |x: usize, y: usize, dx: isize, dy: isize| match (
+        x.checked_add_signed(dx),
+        y.checked_add_signed(dy),
+    ) {
+        (Some(x), Some(y)) if x < wu && y < hu => painted[y * wu + x],
+        _ => true,
+    };
+    let inside: Vec<bool> = (0..wu * hu)
+        .map(|i| {
+            let (x, y) = (i % wu, i / wu);
+            painted[i]
+                && [(-1, 0), (1, 0), (0, -1), (0, 1)]
+                    .iter()
+                    .all(|&(dx, dy)| at(x, y, dx, dy))
+        })
+        .collect();
+    Ok(enclosed_regions(reference, w, h, &inside, p))
+}
+
+/// The regions of `reference` (by `p.target`) lying entirely inside `inside`, filled and
+/// scaled (F-002, F-003).
+fn enclosed_regions(
+    reference: &[u8],
+    w: u32,
+    h: u32,
+    inside: &[bool],
+    p: &EncloseParams,
+) -> Vec<u8> {
     let (wu, hu) = (w as usize, h as usize);
     let n = wu * hu;
-    if reference.len() < n * 4 {
+    if reference.len() < n * 4 || inside.len() < n {
         return vec![0; n];
     }
-    let inside = polygon_inside(pts, w, h);
     let t = threshold(p.tolerance) as u8;
     let px = |i: usize| -> [u8; 4] {
         let mut q = [0u8; 4];

@@ -8,8 +8,9 @@ use std::sync::Arc;
 use brushye_command::commands::{self, Command};
 use brushye_command::core::Document;
 use brushye_command::core::brush::Aa;
+use brushye_command::core::input::Sample;
 use brushye_command::core::selection::SelectMode;
-use brushye_command::params::Points;
+use brushye_command::params::{Points, Samples};
 use brushye_command::tools::SubKind;
 use eframe::egui::{self, Color32, Pos2, Stroke, pos2, vec2};
 
@@ -29,6 +30,10 @@ pub(super) struct Gesture {
     points: Vec<[f64; 2]>,
     /// Dragging inside the selection moves it (S-001).
     moving: bool,
+    /// When the press happened, and each point's time since then in µs (the Paint unfilled
+    /// area stroke's samples).
+    t0: std::time::Instant,
+    times: Vec<u32>,
 }
 
 /// The selection border, computed once per document version.
@@ -190,6 +195,8 @@ impl App {
                     cur: c,
                     points: vec![c],
                     moving: mode == SelectMode::New && inside,
+                    t0: std::time::Instant::now(),
+                    times: vec![0],
                 });
             }
         }
@@ -200,12 +207,17 @@ impl App {
         let c = self.to_canvas(pos);
         if let Some(g) = self.sel.as_mut() {
             g.cur = c;
-            if matches!(g.kind, SubKind::Lasso | SubKind::FillEnclose)
-                && g.points
-                    .last()
-                    .is_none_or(|p| (p[0] - c[0]).hypot(p[1] - c[1]) >= 1.0)
+            if matches!(
+                g.kind,
+                SubKind::Lasso | SubKind::FillEnclose | SubKind::FillUnfilled
+            ) && g
+                .points
+                .last()
+                .is_none_or(|p| (p[0] - c[0]).hypot(p[1] - c[1]) >= 1.0)
             {
                 g.points.push(c);
+                g.times
+                    .push(g.t0.elapsed().as_micros().min(u128::from(u32::MAX)) as u32);
             }
         }
     }
@@ -271,6 +283,24 @@ impl App {
                     .map(|p| [round(p[0]), round(p[1])])
                     .collect();
                 self.enclose_fill(Points(points));
+            }
+            SubKind::FillUnfilled => {
+                let samples = g
+                    .points
+                    .iter()
+                    .zip(&g.times)
+                    .map(|(p, &t_us)| Sample {
+                        x: round(p[0]),
+                        y: round(p[1]),
+                        t_us,
+                        pressure: None,
+                        tilt: None,
+                        twist: None,
+                        eraser: false,
+                        barrel: [false; 2],
+                    })
+                    .collect();
+                self.unfilled_fill(Samples(samples));
             }
             SubKind::Lasso if g.points.len() >= 3 => {
                 let points = g
@@ -403,6 +433,24 @@ impl App {
                 SubKind::Lasso | SubKind::FillEnclose => {
                     let pts: Vec<Pos2> = g.points.iter().map(|&p| self.screen(p)).collect();
                     ants(&painter, &pts);
+                }
+                SubKind::FillUnfilled => {
+                    // The stroke being drawn, as wide as the brush.
+                    let size = self
+                        .ui
+                        .tools
+                        .sets
+                        .get(&ToolId::Fill)
+                        .and_then(|s| s.current())
+                        .map_or(20.0, |s| s.preset.size);
+                    let width = (size * self.view.zoom / f64::from(self.ppp)) as f32;
+                    let color = Color32::from_rgba_unmultiplied(255, 40, 40, 90);
+                    let pts: Vec<Pos2> = g.points.iter().map(|&p| self.screen(p)).collect();
+                    if pts.len() == 1 {
+                        painter.circle_filled(pts[0], width / 2.0, color);
+                    } else {
+                        painter.add(egui::Shape::line(pts, Stroke::new(width.max(1.0), color)));
+                    }
                 }
                 _ => {}
             }
@@ -661,6 +709,47 @@ impl App {
         }
     }
 
+    /// The end of a Paint unfilled area stroke: one `fill.unfilled` with the sub tool's
+    /// settings.
+    fn unfilled_fill(&mut self, samples: Samples) {
+        let Some(sub) = self
+            .ui
+            .tools
+            .sets
+            .get(&ToolId::Fill)
+            .and_then(|s| s.current())
+            .cloned()
+        else {
+            return;
+        };
+        let Some(layer) = self.session.active_layer() else {
+            self.status = "Select a layer".into();
+            return;
+        };
+        let Some(rgb) = self.ui.colour.drawing() else {
+            self.status = "Fill with the transparent colour is not available yet".into();
+            return;
+        };
+        let p = &sub.preset;
+        let cmd = Command::FillUnfilled(commands::FillUnfilled {
+            layer,
+            color: brushye_command::core::Rgba8([rgb[0], rgb[1], rgb[2], 255]),
+            size: p.size,
+            samples,
+            gap: p.gap,
+            target: p.target,
+            tolerance: p.tolerance,
+            aa: Some(p.aa.is_some_and(|a| a != Aa::None)),
+            scale: Some(p.scale.unwrap_or(0)),
+            scale_mode: p.scale_mode,
+            opacity: p.opacity,
+            refer: Some(commands::FillRef::All),
+        });
+        if self.exec(cmd) {
+            self.ui.colour.used();
+        }
+    }
+
     /// A click with the Fill or Auto select tool (F-001): one `fill.area` or `select.auto`.
     pub(super) fn fill_press(&mut self, pos: Pos2) {
         let tool = self.ui.tools.tool;
@@ -674,17 +763,20 @@ impl App {
         else {
             return;
         };
-        if sub.kind == SubKind::FillEnclose {
-            // Enclose and fill: draw a lasso; the release fills (F-002).
+        if matches!(sub.kind, SubKind::FillEnclose | SubKind::FillUnfilled) {
+            // Enclose and fill: draw a lasso (F-002); Paint unfilled area: a brush stroke
+            // (F-003). The release fills.
             let c = self.to_canvas(pos);
             self.sel = Some(Gesture {
-                kind: SubKind::FillEnclose,
+                kind: sub.kind,
                 mode: SelectMode::New,
                 aa: false,
                 start: c,
                 cur: c,
                 points: vec![c],
                 moving: false,
+                t0: std::time::Instant::now(),
+                times: vec![0],
             });
             return;
         }

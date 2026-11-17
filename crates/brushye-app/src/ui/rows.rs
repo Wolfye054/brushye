@@ -920,7 +920,10 @@ fn draw_control(
         }
         Row::ReferMultiple => {
             let mut v = kind.fill_reads_all() == Some(true)
-                || matches!(kind, SubKind::AutoReferred | SubKind::FillEnclose);
+                || matches!(
+                    kind,
+                    SubKind::AutoReferred | SubKind::FillEnclose | SubKind::FillUnfilled
+                );
             widgets::prop_check(ui, c, i.label, true, false, &mut v);
         }
         Row::AreaScaling => {

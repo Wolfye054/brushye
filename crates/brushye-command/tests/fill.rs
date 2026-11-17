@@ -210,3 +210,40 @@ fn enclose_and_fill() {
     let h = |s: &Session| s.document().map(|d| d.content_hash());
     assert_eq!(h(&r), h(&s));
 }
+
+#[test]
+fn paint_unfilled_area() {
+    let mut s = Session::new();
+    run(&mut s, SETUP);
+    sides(&mut s);
+    // A tap of a 40 px brush on the square (10..30): its outline and inside lie wholly inside
+    // the stroke's footprint, the white background does not (F-003).
+    run(
+        &mut s,
+        "fill.unfilled L2 color=#ff0000 size=40 samples=[20,20,1,0]",
+    );
+    assert_eq!(
+        q(&mut s, "?layer.pixel L2 x=20 y=20"),
+        json!([255, 0, 0, 255])
+    );
+    assert_eq!(q(&mut s, "?layer.pixel L2 x=10 y=20")[3], 255, "outline");
+    assert_eq!(q(&mut s, "?layer.pixel L2 x=5 y=5")[3], 0, "background");
+    // A brush narrower than the square fills nothing of it.
+    run(
+        &mut s,
+        "history.undo\nfill.unfilled L2 color=#ff0000 size=10 samples=[15,20,1,0;25,20,1,100000]",
+    );
+    assert_eq!(q(&mut s, "?layer.pixel L2 x=20 y=20")[3], 0);
+    // Errors.
+    assert!(
+        s.run_line("fill.unfilled L2 color=#ff0000 size=0 samples=[20,20,1,0]")
+            .is_err()
+    );
+    assert!(
+        s.run_line("fill.unfilled L2 color=#ff0000 size=20 samples=[20,20,1,0] tolerance=120")
+            .is_err()
+    );
+    let r = Session::replay(&s.journal_text()).unwrap_or_else(|e| panic!("{}", e.msg));
+    let h = |s: &Session| s.document().map(|d| d.content_hash());
+    assert_eq!(h(&r), h(&s));
+}

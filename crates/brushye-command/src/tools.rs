@@ -314,7 +314,15 @@ pub fn default_shown_kind(tool: Tool, kind: SubKind) -> Vec<String> {
             "refer_multiple",
             "fill_vector_path",
         ],
-        (_, SubKind::FillEditing | SubKind::FillUnfilled) => &[
+        // F-003: Paint unfilled area's Tool property.
+        (_, SubKind::FillUnfilled) => &[
+            "target_color",
+            "tolerance",
+            "area_scaling",
+            "refer_multiple",
+            "size",
+        ],
+        (_, SubKind::FillEditing) => &[
             "connected",
             "close_gap",
             "tolerance",
@@ -510,6 +518,11 @@ pub fn default_set(tool: Tool) -> Option<ToolSet> {
                                 }
                                 SubKind::FillEnclose => {
                                     "size=10.0 tolerance=30.0 close_gap=2 scale=10 scale_mode=darkest aa=none target=semi_as_transparent"
+                                }
+                                // Paint unfilled area: brush 20, tolerance 80, no Area
+                                // scaling, no anti-aliasing (F-003).
+                                SubKind::FillUnfilled => {
+                                    "size=20.0 tolerance=80.0 aa=none target=semi_as_transparent"
                                 }
                                 _ => "size=10.0 tolerance=10.0 close_gap=2",
                             }),

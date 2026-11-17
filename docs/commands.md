@@ -294,6 +294,24 @@ Fill the regions inside a lasso (Enclose and fill).
 | `opacity` | u8 | optional `key=` | Opacity in percent (default 100) |
 | `refer` | reference (layer\|all) | optional `key=` | all (default: the visible image) or layer |
 
+### `fill.unfilled` (v1, undoable)
+Fill the regions inside a brush stroke (Paint unfilled area).
+
+| Parameter | Kind | Form | Description |
+|---|---|---|---|
+| `layer` | layer id | positional | Layer to paint (and to read with refer=layer) |
+| `color` | colour | required `key=` | Colour #rrggbb |
+| `size` | f64 | required `key=` | Brush size (diameter) in px (the sub tool's default 20) |
+| `samples` | stroke samples | required `key=` | Pointer samples (b64:… or [x,y,p,t;…]) in canvas pixels |
+| `gap` | gap (narrow\|normal\|wide or percent of size) | optional `key=` | Dab gap: narrow, normal (default), wide, or percent of size |
+| `target` | target color (all\|transparent\|around_transparent\|black\|around_black\|white_transparent\|around_white_transparent\|semi_as_transparent\|enclosed_except_transparent\|enclosed_including_transparent) | optional `key=` | Target color (default semi_as_transparent, CSP's default) |
+| `tolerance` | f64 | optional `key=` | Tolerance in percent (default 80) |
+| `aa` | bool | optional `key=` | Anti-aliasing (default false) |
+| `scale` | i64 | optional `key=` | Area scaling in px (default 0 = off; negative shrinks) |
+| `scale_mode` | scaling mode (rectangle\|round\|darkest) | optional `key=` | Scaling mode (default darkest) |
+| `opacity` | u8 | optional `key=` | Opacity in percent (default 100) |
+| `refer` | reference (layer\|all) | optional `key=` | all (default: the visible image) or layer |
+
 ### `select.from_layer` (v1, undoable)
 Selection from a layer's transparency.
 

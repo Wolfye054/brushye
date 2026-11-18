@@ -6,7 +6,7 @@
 mod common;
 
 use brushye_core::brush::Gap;
-use brushye_core::fill::{EncloseParams, unfilled};
+use brushye_core::fill::{EncloseParams, EncloseTarget, unfilled};
 use brushye_core::input::Sample;
 use common::Img;
 
@@ -128,4 +128,92 @@ fn stroke_footprint() {
         let d = diff(&got, &want);
         assert!(d <= max_diff, "{name}: {d} px differ (max {max_diff})");
     }
+}
+
+/// Capture name, input, stroke, brush size, settings.
+type Case<'a> = (String, &'a [u8], &'a [[f64; 2]], f64, EncloseParams);
+
+/// Run 3: Target color, tolerance and Area scaling. `un2`: square outlines whose top gaps are
+/// bridged by grays on white (row A) and by black at alphas on transparency (row B); `en2`:
+/// F-002's line art. Names: `_t<tolerance>` (default target), `_g<i>` (Target color item i,
+/// tolerance 80), `_s10` (Area scaling 10, To darkest pixel).
+#[test]
+fn target_color_tolerance_and_scaling() {
+    const A: &[[f64; 2]] = &[[70.0, 130.0], [750.0, 130.0]];
+    const B: &[[f64; 2]] = &[[70.0, 530.0], [750.0, 530.0]];
+    const W: &[[f64; 2]] = &[[100.0, 250.0], [700.0, 250.0]];
+    const T: &[[f64; 2]] = &[[100.0, 700.0], [700.0, 700.0]];
+    const X: &[[f64; 2]] = &[[400.0, 400.0]];
+    const R1: &[[f64; 2]] = &[[100.0, 120.0], [680.0, 120.0]];
+    const R2: &[[f64; 2]] = &[[100.0, 320.0], [380.0, 320.0]];
+    let un2 = rgba("inputs/un2.png");
+    let en2 = rgba("inputs/en2.png");
+    let mut cases: Vec<Case> = Vec::new();
+    let base = EncloseParams::unfilled();
+    for t in [100, 80, 60, 40, 20, 5, 0] {
+        let p = EncloseParams {
+            tolerance: f64::from(t),
+            ..base
+        };
+        cases.push((format!("A_t{t}"), &un2, A, 100.0, p));
+        cases.push((format!("B_t{t}"), &un2, B, 100.0, p));
+    }
+    for (g, target) in EncloseTarget::ALL.into_iter().enumerate() {
+        let p = EncloseParams { target, ..base };
+        cases.push((format!("A_g{g}"), &un2, A, 100.0, p));
+        cases.push((format!("B_g{g}"), &un2, B, 100.0, p));
+        if matches!(g, 0 | 7 | 8 | 9) {
+            for (r, pts) in [("W", W), ("T", T), ("X", X)] {
+                cases.push((format!("{r}_g{g}"), &un2, pts, 100.0, p));
+            }
+        }
+        if matches!(g, 0 | 1 | 7 | 8 | 9) {
+            cases.push((format!("R1_g{g}"), &en2, R1, 160.0, p));
+            cases.push((format!("R2_g{g}"), &en2, R2, 160.0, p));
+        }
+    }
+    let scaled = |target| EncloseParams {
+        target,
+        scale: 10,
+        ..base
+    };
+    cases.push((
+        "R1_s10".into(),
+        &en2,
+        R1,
+        160.0,
+        scaled(EncloseTarget::SemiAsTransparent),
+    ));
+    cases.push((
+        "R2_s10".into(),
+        &en2,
+        R2,
+        160.0,
+        scaled(EncloseTarget::SemiAsTransparent),
+    ));
+    cases.push((
+        "R1_g1_s10".into(),
+        &en2,
+        R1,
+        160.0,
+        scaled(EncloseTarget::Transparent),
+    ));
+    cases.push((
+        "R2_g1_s10".into(),
+        &en2,
+        R2,
+        160.0,
+        scaled(EncloseTarget::Transparent),
+    ));
+    let mut bad = Vec::new();
+    for (name, img, pts, size, p) in &cases {
+        let got = unfilled(img, 800, 800, &drag(pts), *size, Gap::Normal, p).unwrap();
+        let want = alpha(&format!("unfilled/run3/{name}.png"));
+        let d = diff(&got, &want);
+        if d != 0 {
+            bad.push(format!("{name}: {d}"));
+        }
+    }
+    assert_eq!(cases.len(), 60);
+    assert!(bad.is_empty(), "{bad:?}");
 }

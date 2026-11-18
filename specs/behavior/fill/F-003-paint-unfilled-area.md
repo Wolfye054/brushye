@@ -1,8 +1,8 @@
 # F-003 Fill tool: Paint unfilled area
 - Status: **implemented** (2026-11-16: `fill.unfilled`, the Paint unfilled area sub tool;
   exact on all 13 run 1 captures and the run 2 tap and straight drags,
-  `crates/brushye-core/tests/observed_unfilled.rs`; run 3's Target color and tolerance
-  rules not yet implemented) / **observed** (run 1: settings, the region rule; run 2: the
+  `crates/brushye-core/tests/observed_unfilled.rs`; 2026-11-17: run 3's Target color,
+  tolerance and Area scaling, all 60 captures exact) / **observed** (run 1: settings, the region rule; run 2: the
   stroke's footprint; run 3: Target color, Tolerance, Area scaling; open items below)
 - CSP version: 1.13.2 (PRO, 64-bit, build 202301210208)
 - Date / method / observer: 2026-11-16 / automated-Wine (pen display :78, XTEST mouse) /
@@ -155,13 +155,14 @@ Area scaling are reproduced exactly** by these rules:
   anti-aliasing off, the gap), shrunk by the 4-neighbourhood; then F-002's regions.
 - Chosen, not observed: pixels past the canvas edge count as painted when shrinking; pen
   pressure, Correction and Starting and ending are ignored (the mouse defaults); Target
-  color, tolerance, Area scaling and anti-aliasing act as in Enclose and fill (run 3 shows
-  the default and the two "enclosed" options differ: to be implemented).
+  color follows run 3 (the default and the two "enclosed" options differ from Enclose and
+  fill, whose own rules are kept until observed); Area scaling is F-001's (exact on run 3's
+  four captures); anti-aliasing as in Enclose and fill.
 - Known difference: the end of a drag (CSP's last dab ~1 px further; 6 and 12 px on D4/D5).
 
 ## Open questions
 - The stroke's end (the last dab's position, ~1 px); the pointer convention (above).
-- Area scaling's growth (run 3 `_s10`) against F-001's To darkest pixel; anti-aliasing on.
+- Anti-aliasing on.
 - Whether "exactly equal colour" (the default target, opaque pixels) allows any small
   difference (250 vs 255 already separates); Close gap (in Sub Tool Detail).
 - Whether Enclose and fill shares run 3's default and "enclosed" rules (F-002 run 1 could

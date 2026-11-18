@@ -375,7 +375,7 @@ pub fn polygon_inside(pts: &[[f64; 2]], w: u32, h: u32) -> Vec<bool> {
 /// Not modelled (open): Close gap (it did not hold a 10 px gap in run 1), the reference
 /// options, anti-aliasing without scaling (binary).
 pub fn enclose(reference: &[u8], w: u32, h: u32, pts: &[[f64; 2]], p: &EncloseParams) -> Vec<u8> {
-    enclosed_regions(reference, w, h, &polygon_inside(pts, w, h), p)
+    enclosed_regions(reference, w, h, &polygon_inside(pts, w, h), None, p)
 }
 
 /// Paint unfilled area (F-003): the area filled by a stroke of a round brush `size` px wide
@@ -384,7 +384,9 @@ pub fn enclose(reference: &[u8], w: u32, h: u32, pts: &[[f64; 2]], p: &EnclosePa
 /// (`⌊x⌋, ⌊y⌋`), shrunk by one pixel with the 4-neighbourhood (a pixel counts when it and its
 /// four neighbours are painted; run 2, exact on a tap and on drags). Then every region of
 /// Enclose and fill lying entirely inside the footprint is filled (run 1; all 13 captures
-/// exact). Chosen, not observed: pixels past the canvas edge count as painted for the shrink.
+/// exact), with run 3's Target color and tolerance rules (`enclosed_regions`; all 60
+/// captures exact, Area scaling included). Chosen, not observed: pixels past the canvas edge
+/// count as painted for the shrink.
 pub fn unfilled(
     reference: &[u8],
     w: u32,
@@ -430,16 +432,32 @@ pub fn unfilled(
                     .all(|&(dx, dy)| at(x, y, dx, dy))
         })
         .collect();
-    Ok(enclosed_regions(reference, w, h, &inside, p))
+    Ok(enclosed_regions(
+        reference,
+        w,
+        h,
+        &inside,
+        Some(&painted),
+        p,
+    ))
 }
 
 /// The regions of `reference` (by `p.target`) lying entirely inside `inside`, filled and
-/// scaled (F-002, F-003).
+/// scaled (F-002, F-003). `painted` (Paint unfilled area: the stroke as painted) selects
+/// F-003 run 3's rules, observed for that sub tool only:
+/// - transparent = alpha ≤ T, never alpha 255 (at tolerance 100 opaque lines stay opaque);
+/// - the default (Treat semi-transparent as transparent): transparent pixels form regions
+///   together, the others regions of exactly equal colour (opaque colours never merge);
+/// - All enclosed areas except / including transparency: two classes, transparent and not;
+///   "including" adds every non-transparent pixel the stroke paints.
+///
+/// Without it (Enclose and fill, F-002 run 1), those three behave like Target all colors.
 fn enclosed_regions(
     reference: &[u8],
     w: u32,
     h: u32,
     inside: &[bool],
+    painted: Option<&[bool]>,
     p: &EncloseParams,
 ) -> Vec<u8> {
     let (wu, hu) = (w as usize, h as usize);
@@ -453,7 +471,8 @@ fn enclosed_regions(
         q.copy_from_slice(&reference[i * 4..i * 4 + 4]);
         q
     };
-    let transparent = |q: [u8; 4]| q[3] <= t;
+    let unfilled = painted.is_some();
+    let transparent = |q: [u8; 4]| q[3] <= t && (!unfilled || q[3] < 255);
     let black = |q: [u8; 4]| q[3] >= 255 - t && q[..3].iter().all(|&c| c <= t);
     let white = |q: [u8; 4]| q[3] >= 255 - t && q[..3].iter().all(|&c| c >= 255 - t);
     use EncloseTarget as E;
@@ -478,10 +497,24 @@ fn enclosed_regions(
         }
         let seed = px(s);
         let like = |i: usize| {
+            let q = px(i);
             if class.is_some() {
                 member(i)
+            } else if unfilled && p.target == E::SemiAsTransparent {
+                match (transparent(seed), transparent(q)) {
+                    (true, true) => true,
+                    (false, false) => q == seed,
+                    _ => false,
+                }
+            } else if unfilled
+                && matches!(
+                    p.target,
+                    E::EnclosedExceptTransparent | E::EnclosedIncludingTransparent
+                )
+            {
+                transparent(seed) == transparent(q)
             } else {
-                px(i).iter().zip(&seed).all(|(a, b)| a.abs_diff(*b) <= t)
+                q.iter().zip(&seed).all(|(a, b)| a.abs_diff(*b) <= t)
             }
         };
         comp.clear();
@@ -508,6 +541,13 @@ fn enclosed_regions(
             for &i in &comp {
                 region[i] = true;
             }
+        }
+    }
+    if let Some(painted) = painted
+        && p.target == E::EnclosedIncludingTransparent
+    {
+        for (i, r) in region.iter_mut().enumerate() {
+            *r |= painted[i] && !transparent(px(i));
         }
     }
     if p.scale != 0 {

@@ -155,8 +155,7 @@ Area scaling are reproduced exactly** by these rules:
   anti-aliasing off, the gap), shrunk by the 4-neighbourhood; then F-002's regions.
 - Chosen, not observed: pixels past the canvas edge count as painted when shrinking; pen
   pressure, Correction and Starting and ending are ignored (the mouse defaults); Target
-  color follows run 3 (the default and the two "enclosed" options differ from Enclose and
-  fill, whose own rules are kept until observed); Area scaling is F-001's (exact on run 3's
+  color follows run 3 (shared with Enclose and fill, F-002 run 2); Area scaling is F-001's (exact on run 3's
   four captures); anti-aliasing as in Enclose and fill.
 - Known difference: the end of a drag (CSP's last dab ~1 px further; 6 and 12 px on D4/D5).
 
@@ -165,6 +164,4 @@ Area scaling are reproduced exactly** by these rules:
 - Anti-aliasing on.
 - Whether "exactly equal colour" (the default target, opaque pixels) allows any small
   difference (250 vs 255 already separates); Close gap (in Sub Tool Detail).
-- Whether Enclose and fill shares run 3's default and "enclosed" rules (F-002 run 1 could
-  not tell them from Target all colors).
 - Brush shapes other than the round tip; anti-aliasing on; opacity; the reference options.

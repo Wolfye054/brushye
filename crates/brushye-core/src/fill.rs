@@ -361,21 +361,18 @@ pub fn polygon_inside(pts: &[[f64; 2]], w: u32, h: u32) -> Vec<bool> {
     out
 }
 
-/// Enclose and fill (F-002 run 1): the area filled by a lasso `pts` (canvas pixels) on
-/// `reference` (straight RGBA). The image is divided into regions (4-connected); every region
-/// lying **entirely inside the lasso** is filled, outlines included, then grown by Area
-/// scaling. The regions, by Target color (tolerance threshold T = round(2.55·t)):
-/// - "Only X": regions of X pixels; "Area surrounded by X": regions of the other pixels;
-///   transparent = alpha ≤ T, black = alpha ≥ 255 − T and R, G, B ≤ T, white = alpha ≥
-///   255 − T and R, G, B ≥ 255 − T (chosen: thresholds not observed; black at alpha 128 is
-///   not black, as observed);
-/// - the other four: regions of like colour (a pixel joins a region when within T of the
-///   region's first pixel, chosen); identical in run 1 (open: what separates them).
+/// Enclose and fill (F-002): the area filled by a lasso `pts` (canvas pixels) on
+/// `reference` (straight RGBA). The image is divided into regions (4-connected, by Target
+/// color, see [`enclosed_regions`]); every region lying **entirely inside the lasso** is
+/// filled, outlines included, then grown by Area scaling. The rules are Paint unfilled
+/// area's (F-002 run 2 = F-003 run 3), with the lasso's inside as the painted area.
 ///
 /// Not modelled (open): Close gap (it did not hold a 10 px gap in run 1), the reference
-/// options, anti-aliasing without scaling (binary).
+/// options, anti-aliasing without scaling (binary), the lasso's Stabilization (CSP rounds
+/// its corners).
 pub fn enclose(reference: &[u8], w: u32, h: u32, pts: &[[f64; 2]], p: &EncloseParams) -> Vec<u8> {
-    enclosed_regions(reference, w, h, &polygon_inside(pts, w, h), None, p)
+    let inside = polygon_inside(pts, w, h);
+    enclosed_regions(reference, w, h, &inside, &inside, p)
 }
 
 /// Paint unfilled area (F-003): the area filled by a stroke of a round brush `size` px wide
@@ -432,37 +429,32 @@ pub fn unfilled(
                     .all(|&(dx, dy)| at(x, y, dx, dy))
         })
         .collect();
-    Ok(enclosed_regions(
-        reference,
-        w,
-        h,
-        &inside,
-        Some(&painted),
-        p,
-    ))
+    Ok(enclosed_regions(reference, w, h, &inside, &painted, p))
 }
 
 /// The regions of `reference` (by `p.target`) lying entirely inside `inside`, filled and
-/// scaled (F-002, F-003). `painted` (Paint unfilled area: the stroke as painted) selects
-/// F-003 run 3's rules, observed for that sub tool only:
+/// scaled (F-002 run 2, F-003 run 3; T = round(2.55·t)). `painted` is the area the gesture
+/// covers (Paint unfilled area: the stroke as painted; Enclose and fill: the lasso's inside).
 /// - transparent = alpha ≤ T, never alpha 255 (at tolerance 100 opaque lines stay opaque);
+///   black = alpha ≥ 255 − T and R, G, B ≤ T; white = alpha ≥ 255 − T and R, G, B ≥ 255 − T;
+/// - "Only X": regions of X pixels; "Area surrounded by X": regions of the other pixels;
+/// - Target all colors: regions of like colour (every channel within T of the region's
+///   first pixel);
 /// - the default (Treat semi-transparent as transparent): transparent pixels form regions
 ///   together, the others regions of exactly equal colour (opaque colours never merge);
 /// - All enclosed areas except / including transparency: two classes, transparent and not;
-///   "including" adds every non-transparent pixel the stroke paints.
-///
-/// Without it (Enclose and fill, F-002 run 1), those three behave like Target all colors.
+///   "including" adds every non-transparent pixel in `painted`.
 fn enclosed_regions(
     reference: &[u8],
     w: u32,
     h: u32,
     inside: &[bool],
-    painted: Option<&[bool]>,
+    painted: &[bool],
     p: &EncloseParams,
 ) -> Vec<u8> {
     let (wu, hu) = (w as usize, h as usize);
     let n = wu * hu;
-    if reference.len() < n * 4 || inside.len() < n {
+    if reference.len() < n * 4 || inside.len() < n || painted.len() < n {
         return vec![0; n];
     }
     let t = threshold(p.tolerance) as u8;
@@ -471,8 +463,7 @@ fn enclosed_regions(
         q.copy_from_slice(&reference[i * 4..i * 4 + 4]);
         q
     };
-    let unfilled = painted.is_some();
-    let transparent = |q: [u8; 4]| q[3] <= t && (!unfilled || q[3] < 255);
+    let transparent = |q: [u8; 4]| q[3] <= t && q[3] < 255;
     let black = |q: [u8; 4]| q[3] >= 255 - t && q[..3].iter().all(|&c| c <= t);
     let white = |q: [u8; 4]| q[3] >= 255 - t && q[..3].iter().all(|&c| c >= 255 - t);
     use EncloseTarget as E;
@@ -500,18 +491,16 @@ fn enclosed_regions(
             let q = px(i);
             if class.is_some() {
                 member(i)
-            } else if unfilled && p.target == E::SemiAsTransparent {
+            } else if p.target == E::SemiAsTransparent {
                 match (transparent(seed), transparent(q)) {
                     (true, true) => true,
                     (false, false) => q == seed,
                     _ => false,
                 }
-            } else if unfilled
-                && matches!(
-                    p.target,
-                    E::EnclosedExceptTransparent | E::EnclosedIncludingTransparent
-                )
-            {
+            } else if matches!(
+                p.target,
+                E::EnclosedExceptTransparent | E::EnclosedIncludingTransparent
+            ) {
                 transparent(seed) == transparent(q)
             } else {
                 q.iter().zip(&seed).all(|(a, b)| a.abs_diff(*b) <= t)
@@ -543,9 +532,7 @@ fn enclosed_regions(
             }
         }
     }
-    if let Some(painted) = painted
-        && p.target == E::EnclosedIncludingTransparent
-    {
+    if p.target == E::EnclosedIncludingTransparent {
         for (i, r) in region.iter_mut().enumerate() {
             *r |= painted[i] && !transparent(px(i));
         }

@@ -1,12 +1,14 @@
 # F-002 Fill tool: Enclose and fill
 - Status: **implemented** (2026-11-16: `fill.enclose`, the Enclose and fill sub tool;
-  exact on all 29 run 1 captures, `crates/brushye-core/tests/observed_enclose.rs`) /
+  exact on all 29 run 1 captures; 2026-11-18: run 2's rules, exact on 53 of its 56
+  captures, the other three differ only at the lasso's rounded corners;
+  `crates/brushye-core/tests/observed_enclose.rs`) /
   **observed** (run 1: settings, the region rule, Target color; run 2: Target color and
   Tolerance with F-003's `un2`; open items below)
 - CSP version: 1.13.2 (PRO, 64-bit, build 202301210208)
 - Date / method / observer: 2026-11-16 / automated-Wine (pen display :78, XTEST mouse) /
   Claude
-- Data: `data/enclose/run1/` (exports re-encoded without iCCP). Inputs `en1`, `en2` from
+- Data: `data/enclose/run1/`, `data/enclose/run2/` (exports re-encoded without iCCP). Inputs `en1`, `en2` from
   `tools/observe/make_fill_inputs.py` (our own test images, not CSP material).
 - Related: F-001 (the flood fill, Close gap, Area scaling and its smoothing).
 
@@ -128,21 +130,25 @@ defaults (Treat semi-transparent as transparent, 30, Area scaling 10) restored a
   the Target color row.
 - Regions are 4-connected. "Inside the lasso" is a pixel's centre inside the polygon
   (even-odd). Area scaling and its smoothing are F-001's.
-- Chosen, not observed (exact on run 1 regardless): with tolerance T = round(2.55·t),
-  transparent = alpha ≤ T, black = alpha ≥ 255 − T with R, G, B ≤ T, white = alpha ≥
-  255 − T with R, G, B ≥ 255 − T; for the four "all" options a pixel joins a region when
-  every channel is within T of the region's first pixel; the four "all" options behave
-  alike; Close gap has no effect; anti-aliasing without area scaling gives the binary
-  area.
+- Target color and tolerance are F-003 run 3's rules (shared code with Paint unfilled
+  area, `brushye_core::fill`), with the lasso's inside as the painted area. With
+  T = round(2.55·t): transparent = alpha ≤ T and < 255; black = alpha ≥ 255 − T with
+  R, G, B ≤ T; white = alpha ≥ 255 − T with R, G, B ≥ 255 − T. Target all colors: a pixel
+  joins a region when every channel is within T of the region's first pixel. The default:
+  transparent pixels together, others only with exactly equal RGBA. Except / including
+  transparency: two classes (transparent / not); "including" adds every non-transparent
+  pixel inside the lasso.
+- Known difference: the lasso is used as drawn; CSP rounds its corners (Stabilization 6),
+  so "including" fills a few more corner pixels than CSP (run 2: 157, 114, 6 px).
+- Chosen, not observed: Close gap has no effect; anti-aliasing without area scaling gives
+  the binary area.
 
 ## Open questions
-- (Run 2 answers what separates the four "all" options and the default, and tolerance's
-  role; not yet implemented: Brushye still treats the default and the two "enclosed"
-  options as Target all colors here.)
 - Close gap: no effect in L3b; whether it ever acts in Enclose and fill.
 - Refer to image border; Reference overflow frame; Refer multiple / Exclude; Fill up to
   vector path.
-- Anti-aliasing on; Opacity and Blending mode; Stabilization's effect on the lasso.
+- Anti-aliasing on; Opacity and Blending mode; Stabilization's effect on the lasso (its
+  corners are rounded: run 2's "including" captures).
 - The lasso's own edge: a region that the lasso line touches but does not cross; regions
   partly on the lasso line.
 - Other ways to draw the area (polyline / rectangle) if any.

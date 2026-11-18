@@ -363,3 +363,7 @@ for i, v in enumerate(V):
     outline4(x, 500, 60, (0, 0, 0, 255))
     img[500:503, x + 25:x + 35] = (0, 0, 0, v)
 Image.fromarray(img, "RGBA").save(os.path.join(out, "un2.png"))
+
+# wh (F-002 run 3, the lasso's shape): plain opaque white. With Enclose and fill's "All
+# enclosed areas including transparency" the fill is exactly the lasso's inside.
+save("wh", 255, 255, 255, 255)

@@ -4,11 +4,11 @@
   captures, the other three differ only at the lasso's rounded corners;
   `crates/brushye-core/tests/observed_enclose.rs`) /
   **observed** (run 1: settings, the region rule, Target color; run 2: Target color and
-  Tolerance with F-003's `un2`; open items below)
+  Tolerance with F-003's `un2`; run 3: the lasso's shape and Stabilization; open items below)
 - CSP version: 1.13.2 (PRO, 64-bit, build 202301210208)
 - Date / method / observer: 2026-11-16 / automated-Wine (pen display :78, XTEST mouse) /
   Claude
-- Data: `data/enclose/run1/`, `data/enclose/run2/` (exports re-encoded without iCCP). Inputs `en1`, `en2` from
+- Data: `data/enclose/run1/`, `run2/`, `run3/` (exports re-encoded without iCCP). Inputs `en1`, `en2`, `wh` from
   `tools/observe/make_fill_inputs.py` (our own test images, not CSP material).
 - Related: F-001 (the flood fill, Close gap, Area scaling and its smoothing).
 
@@ -121,6 +121,54 @@ defaults (Treat semi-transparent as transparent, 30, Area scaling 10) restored a
     corners (rounded by the lasso's Stabilization 6).
 - With these rules (F-003 run 3's) F-002 run 1's 29 captures stay exact.
 
+## Run 3 (2026-11-18, pen display :78): the lasso's shape and Stabilization
+Data in `data/enclose/run3/` (re-encoded without iCCP) with every capture's input events in
+`events.txt` (`<name> x,y;…`, canvas px: the press point, then every move; the last is the
+release point). Input `wh` (plain opaque white); Target color **All enclosed areas
+including transparency**, Area scaling off, so the fill is exactly the lasso's inside.
+Analysis: `tools/observe/f002_lasso_model.py data/enclose/run3`.
+- Lassos: the rectangle (100, 100)–(400, 300), pressed at (100, 100), moved clockwise through
+  the corners in `n` evenly spaced events per side (integer positions) and back to the start,
+  then released; `tri`: the triangle (100, 400), (400, 420), (220, 750) with 8 events per side.
+  Mouse (XTEST, `S<stab>_…`: 30 ms between events, `slow` 150 ms, n32 10 ms) and pen
+  (`vpen.py`, pressure 0.5, `P<stab>_…`: 30 ms for n8 and tri, 10 ms for n64, `w30` 30 ms).
+- Stabilization is set in Sub Tool Detail > Correction (it is not in the Tool property).
+  Values checked on screenshots: 0, 100 for the mouse; 0, 6, 20, 50, 100 for the pen.
+  (Mouse captures at 6 and 20 were also made, identical to 0, but their setting was not
+  screenshot-checked, so they are not kept.)
+
+Results (CSP px = filled pixels; model below):
+
+| capture | S | CSP px | model px | extra | missing |
+|---|---|---|---|---|---|
+| S0_n1 / n2 / n8 / n32 | 0 | 52491 / 58116 / 59882 / 59992 | 52490 / 58119 / 59886 / 59993 | 1 / 3 / 4 / 1 | 2 / 0 / 0 / 0 |
+| S0_n8slow / S0_tri | 0 | 59882 / 51283 | 59886 / 51291 | 4 / 8 | 0 |
+| S100_n1 / n8 / n8slow / n32 (mouse) | 100 | **identical to S0's**, pixel for pixel | | | |
+| P0_n8 / n64 / tri | 0 | 59882 / 59999 / 51285 | 59886 / 59999 / 51291 | 4 / 0 / 8 | 0 / 0 / 2 |
+| P6_n8 / n64 / n64w30 / tri | 6 | 55777 / 59936 / 59936 / 46578 | 55782 / 59936 / 59936 / 46585 | 5 / 0 / 0 / 7 | 0 |
+| P20_n64 | 20 | 59273 | 59273 | 0 | 0 |
+| P50_n64 | 50 | 56141 | 55430 | 0 | 711 |
+| P100_n64 | 100 | 50381 | 42706 | 0 | 7675 |
+| P100_n8 (twice) | 100 | **0** (nothing filled) | 13860 | | |
+
+1. **The lasso is a smoothed curve through the input events, even at Stabilization 0**: the
+   quadratic B-spline of brush strokes (B-002 run 2) — a straight piece from the press point
+   to the first segment midpoint, a quadratic Bézier (mᵢ, Pᵢ, mᵢ₊₁) around every interior
+   event, a straight piece to the release point — closed back to the press point. A pixel is
+   inside when its centre is (event positions taken as they are, no half-pixel offset; the
+   model with +0.5 is worse). So corners are cut by half the neighbouring segments: the press
+   corner stays sharp, and fewer events cut more (n1 touches each side only at its middle).
+   Within 1–8 px on every capture at S = 0.
+2. Timing has no effect: 30 vs 150 ms (mouse) and 10 vs 30 ms (pen) give identical exports.
+3. **Stabilization acts on pen input only** (under Wine): the mouse at 100 is identical to 0.
+   With the pen, the lasso line lags behind the pen while drawing (seen on screen at 100).
+4. **With the pen, Stabilization S is Brushye's brush rule** (B-007): each event becomes the
+   mean of the last S events, then the spline of 1. Exact at S = 6 and S = 20 on the n64
+   captures; S ± 1 is worse on every capture (e.g. P6_n8: S 5 +1290 px, S 7 −1512 px). As for
+   brushes, larger settings are off (S 50: 711 px short; S 100: 7675 px short), and at S 100
+   a lasso of only 32 events fills nothing (the model still has 13860 px).
+- Flag `verify-native`: whether native Windows also leaves mouse input unstabilized.
+
 ## Implementation notes (Brushye)
 - `brushye_core::fill::enclose` and the command `fill.enclose LAYER points=[x,y;…]
   color=#rrggbb [target= tolerance= aa= scale= scale_mode= opacity= refer=]`; the command's
@@ -138,8 +186,9 @@ defaults (Treat semi-transparent as transparent, 30, Area scaling 10) restored a
   transparent pixels together, others only with exactly equal RGBA. Except / including
   transparency: two classes (transparent / not); "including" adds every non-transparent
   pixel inside the lasso.
-- Known difference: the lasso is used as drawn; CSP rounds its corners (Stabilization 6),
-  so "including" fills a few more corner pixels than CSP (run 2: 157, 114, 6 px).
+- Known difference: the lasso is used as drawn (a polygon through the events); CSP's lasso
+  is the B-002 spline of the events (run 3), so "including" fills a few more corner pixels
+  than CSP (run 2: 157, 114, 6 px).
 - Chosen, not observed: Close gap has no effect; anti-aliasing without area scaling gives
   the binary area.
 
@@ -147,8 +196,9 @@ defaults (Treat semi-transparent as transparent, 30, Area scaling 10) restored a
 - Close gap: no effect in L3b; whether it ever acts in Enclose and fill.
 - Refer to image border; Reference overflow frame; Refer multiple / Exclude; Fill up to
   vector path.
-- Anti-aliasing on; Opacity and Blending mode; Stabilization's effect on the lasso (its
-  corners are rounded: run 2's "including" captures).
+- Anti-aliasing on; Opacity and Blending mode.
+- Stabilization ≥ 50 with the pen (as for brushes, B-007), and why a short lasso at 100
+  fills nothing; "Adjust by speed".
 - The lasso's own edge: a region that the lasso line touches but does not cross; regions
   partly on the lasso line.
 - Other ways to draw the area (polyline / rectangle) if any.

@@ -1,8 +1,9 @@
 # F-003 Fill tool: Paint unfilled area
 - Status: **implemented** (2026-11-16: `fill.unfilled`, the Paint unfilled area sub tool;
   exact on all 13 run 1 captures and the run 2 tap and straight drags,
-  `crates/brushye-core/tests/observed_unfilled.rs`) / **observed** (run 1: settings, the
-  region rule; run 2: the stroke's footprint; open items below)
+  `crates/brushye-core/tests/observed_unfilled.rs`; run 3's Target color and tolerance
+  rules not yet implemented) / **observed** (run 1: settings, the region rule; run 2: the
+  stroke's footprint; run 3: Target color, Tolerance, Area scaling; open items below)
 - CSP version: 1.13.2 (PRO, 64-bit, build 202301210208)
 - Date / method / observer: 2026-11-16 / automated-Wine (pen display :78, XTEST mouse) /
   Claude
@@ -92,6 +93,56 @@ anti-aliasing off) unless stated.
   centroid at (500.48, 500.58), while this tool's tap at screen (743, 363) is centred on
   (200, 200): open whether the two tools read the pointer differently.)
 
+## Run 3 (2026-11-17, pen display :78): Target color, Tolerance, Area scaling
+Data in `data/unfilled/run3/` (exports re-encoded without iCCP). Input `un2`
+(`tools/observe/make_fill_inputs.py`): two rows of nine 60 px square outlines (3 px black) at
+x = 40 + 85·i, each with a 10 px gap in its top side (x + 25 … x + 35) bridged by a value
+V = 250, 230, 205, 180, 150, 128, 100, 60, 30. **Row A** (y = 100) on opaque white, bridges
+gray V; **row B** (y = 500) on transparent (0, 0, 0, 0), bridges black at alpha V. A bridge
+that joins the inside's region to the outside's keeps the inside from filling. Brush 100,
+one stroke per row from (70, y + 30) to (750, y + 30) (`A_*`, `B_*`); also strokes on plain
+white (`W_*`, (100, 250)–(700, 250)), plain transparent (`T_*`, (100, 700)–(700, 700)) and
+a tap on the white/transparent boundary (`X_*`, (400, 400)). On `en2` (brush 160): row 1
+(A–D) by a stroke (100, 120)–(680, 120) (`R1_*`), row 2 (E, F) by (100, 320)–(380, 320)
+(`R2_*`). Names: `_t<tolerance>` (default target), `_g<i>` (Target color item i of the list
+in F-002, tolerance 80), `_s10` (Area scaling on). Positions are the pixels the pointer
+hit; every setting checked on a screenshot.
+
+The footprint is run 2's in every capture (`E` below: the stroke shrunk by the
+4-neighbourhood; `P`: the stroke as painted). T = round(2.55·t). Transparent = alpha ≤ T
+(alpha 255 never: at t = 100 the black outlines stay opaque). **All 56 captures without
+Area scaling are reproduced exactly** by these rules:
+- **Tolerance, default target ("Treat semi-transparent as transparent")**, t = 100, 80, 60,
+  40, 20, 5, 0. Row B: a bridge of alpha V is transparent exactly when V ≤ T (t 80: 180
+  leaks, 205 holds; t 60: 150 / 180; t 40: 100 / 128; t 20: 30 / 60; t 5 and 0: none leak;
+  t 100: all leak). Row A: **every square fills at every tolerance**, even the 250 bridge at
+  t 100: opaque pixels of different colours are never merged. Rule: transparent pixels form
+  regions together; other pixels form regions of exactly equal colour.
+- **Target all colors** (`_g0`): regions of like colour, a pixel within T (largest channel
+  difference) of the region's first pixel (row A: bridges of 60 and up join the white and
+  leak, 30 holds; row B: as the default). Enclose and fill's rule, exact.
+- **Only transparent / Area surrounded by transparent / Only black / Area surrounded by
+  black / Only white and transparent / Area surrounded by white and transparent**
+  (`_g1`–`_g6`): exactly F-002's class rules (transparent alpha ≤ T; black alpha ≥ 255 − T
+  and R, G, B ≤ T; white alpha ≥ 255 − T and R, G, B ≥ 255 − T): e.g. Only black takes the
+  bridges down to 60 on both rows, Area surrounded by black fills an inside when its bridge
+  is black.
+- **All enclosed areas except transparency** (`_g8`): two classes only, transparent and not;
+  a component of either lying wholly inside E is filled. On row A (all opaque, one component
+  reaching past the stroke) **nothing** fills, not even the outlines; on `en2` D's opaque
+  white inside fills with its outline (both in the opaque component surrounded by
+  transparency).
+- **All enclosed areas including transparency** (`_g9`): the same, **plus every
+  non-transparent pixel the stroke paints** (P, not shrunk): on plain white the whole stroke
+  (67872 px, as painted), on the boundary tap only its white half, on plain transparent
+  nothing.
+- (`en2` with the default, Target all colors and the two "enclosed" options: identical,
+  43200 and 22180 px.)
+- **Area scaling** (checking it gives 10, Scaling mode To darkest pixel, as in Enclose and
+  fill): with the default target it changes nothing on `en2` (whole shapes; it does not grow
+  into transparency); with Only transparent it grows the insides (R1 25992 → 27848, R2
+  18408 → 21084). Not yet compared with F-001's rule.
+
 ## Implementation notes (Brushye)
 - `brushye_core::fill::unfilled` and the command `fill.unfilled LAYER color=#rrggbb size=
   samples=[x,y,p,t;…] [gap= target= tolerance= aa= scale= scale_mode= opacity= refer=]`;
@@ -104,10 +155,15 @@ anti-aliasing off) unless stated.
   anti-aliasing off, the gap), shrunk by the 4-neighbourhood; then F-002's regions.
 - Chosen, not observed: pixels past the canvas edge count as painted when shrinking; pen
   pressure, Correction and Starting and ending are ignored (the mouse defaults); Target
-  color, tolerance, Area scaling and anti-aliasing act as in Enclose and fill.
+  color, tolerance, Area scaling and anti-aliasing act as in Enclose and fill (run 3 shows
+  the default and the two "enclosed" options differ: to be implemented).
 - Known difference: the end of a drag (CSP's last dab ~1 px further; 6 and 12 px on D4/D5).
 
 ## Open questions
 - The stroke's end (the last dab's position, ~1 px); the pointer convention (above).
-- Target color, Tolerance (80 by default), Close gap and Area scaling with this sub tool.
+- Area scaling's growth (run 3 `_s10`) against F-001's To darkest pixel; anti-aliasing on.
+- Whether "exactly equal colour" (the default target, opaque pixels) allows any small
+  difference (250 vs 255 already separates); Close gap (in Sub Tool Detail).
+- Whether Enclose and fill shares run 3's default and "enclosed" rules (F-002 run 1 could
+  not tell them from Target all colors).
 - Brush shapes other than the round tip; anti-aliasing on; opacity; the reference options.

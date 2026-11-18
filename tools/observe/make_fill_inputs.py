@@ -346,3 +346,20 @@ save("un1", img, img, img, 255)
 yy, xx = np.mgrid[0:800, 0:800]
 img = np.where((xx + yy) % 2 == 0, 255, 0).astype(np.uint8)
 save("dab1", img, img, img, 255)
+
+# Paint unfilled area settings (F-003 run 3), `un2`: two rows of nine 60 px square outlines
+# (3 px black) at x = 40 + 85·i, each with a 10 px gap (x + 25 … x + 35) in its top side
+# bridged by a value V_i = 250, 230, 205, 180, 150, 128, 100, 60, 30:
+# - top half (y < 400) opaque white, squares at y = 100: the bridge is gray V_i (opaque);
+# - bottom half transparent (0, 0, 0, 0), squares at y = 500: the bridge is black at alpha V_i.
+# A bridge that joins the inside's region to the outside's keeps the inside from filling.
+V = [250, 230, 205, 180, 150, 128, 100, 60, 30]
+img = np.zeros((800, 800, 4), np.uint8)
+img[:400] = (255, 255, 255, 255)
+for i, v in enumerate(V):
+    x = 40 + 85 * i
+    outline4(x, 100, 60, (0, 0, 0, 255))
+    img[100:103, x + 25:x + 35] = (v, v, v, 255)
+    outline4(x, 500, 60, (0, 0, 0, 255))
+    img[500:503, x + 25:x + 35] = (0, 0, 0, v)
+Image.fromarray(img, "RGBA").save(os.path.join(out, "un2.png"))

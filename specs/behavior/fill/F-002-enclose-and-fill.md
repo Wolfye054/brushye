@@ -1,7 +1,8 @@
 # F-002 Fill tool: Enclose and fill
 - Status: **implemented** (2026-11-16: `fill.enclose`, the Enclose and fill sub tool;
   exact on all 29 run 1 captures, `crates/brushye-core/tests/observed_enclose.rs`) /
-  **observed** (run 1: settings, the region rule, Target color; open items below)
+  **observed** (run 1: settings, the region rule, Target color; run 2: Target color and
+  Tolerance with F-003's `un2`; open items below)
 - CSP version: 1.13.2 (PRO, 64-bit, build 202301210208)
 - Date / method / observer: 2026-11-16 / automated-Wine (pen display :78, XTEST mouse) /
   Claude
@@ -95,6 +96,29 @@ with the transparent side, its solid core with the line.)
   F-001's rule: transparent interiors grow 2 px into their 3 px black lines (t − 1), and
   E's interior 10 px into its gray square (0.75 of it). Everything else is unchanged.
 
+## Run 2 (2026-11-17, pen display :78): Target color and Tolerance (as F-003 run 3)
+Data in `data/enclose/run2/` (re-encoded without iCCP). F-003 run 3's inputs and names
+(`un2` rows A / B, plain white `W`, plain transparent `T`, the white/transparent boundary
+`X`, `en2` rows `R1` / `R2`), with rectangular lassos (canvas) A (20, 80)–(795, 185),
+B (20, 480)–(795, 585), W (100, 200)–(700, 300), T (100, 650)–(700, 750), X (350, 350)–
+(450, 450), R1 (40, 40)–(740, 200), R2 (40, 240)–(420, 400). **Area scaling off**;
+`_t<t>`: default target at tolerance t (30, the default, 100, 80, 60, 40, 20, 5, 0);
+`_g<i>`: Target color item i at tolerance 80. Every setting checked on a screenshot; the
+defaults (Treat semi-transparent as transparent, 30, Area scaling 10) restored after.
+- **Every capture equals F-003 run 3's** (the same name there), pixel for pixel, except
+  "All enclosed areas including transparency" on opaque areas: Enclose and fill's rules
+  are Paint unfilled area's, with the lasso's inside in place of the stroke's footprint.
+  - Default target: on row A every square fills at every tolerance (opaque colours never
+    merge); on row B a bridge leaks when its alpha ≤ T (t 30, T 77: 60 leaks, 100 holds;
+    t 100: all leak, the outlines stay opaque).
+  - Target all colors and the six class options: as F-003 run 3 (and F-002 run 1).
+  - All enclosed areas except transparency: two classes; nothing on row A.
+  - **All enclosed areas including transparency**: the same plus **every non-transparent
+    pixel inside the lasso** (row A 81218 px, W 59886, X 4994: the white half). Compared
+    with the nominal rectangles, the model has 157 / 114 / 6 px more, all at the lasso's
+    corners (rounded by the lasso's Stabilization 6).
+- With these rules (F-003 run 3's) F-002 run 1's 29 captures stay exact.
+
 ## Implementation notes (Brushye)
 - `brushye_core::fill::enclose` and the command `fill.enclose LAYER points=[x,y;…]
   color=#rrggbb [target= tolerance= aa= scale= scale_mode= opacity= refer=]`; the command's
@@ -112,8 +136,9 @@ with the transparent side, its solid core with the line.)
   area.
 
 ## Open questions
-- What separates the four "all" options and the default ("semi-transparent" threshold;
-  transparent regions); tolerance's role in forming regions (30 by default).
+- (Run 2 answers what separates the four "all" options and the default, and tolerance's
+  role; not yet implemented: Brushye still treats the default and the two "enclosed"
+  options as Target all colors here.)
 - Close gap: no effect in L3b; whether it ever acts in Enclose and fill.
 - Refer to image border; Reference overflow frame; Refer multiple / Exclude; Fill up to
   vector path.

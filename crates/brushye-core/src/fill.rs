@@ -361,15 +361,41 @@ pub fn polygon_inside(pts: &[[f64; 2]], w: u32, h: u32) -> Vec<bool> {
     out
 }
 
-/// Enclose and fill (F-002): the area filled by a lasso `pts` (canvas pixels) on
-/// `reference` (straight RGBA). The image is divided into regions (4-connected, by Target
+/// The lasso drawn from input events `events` (canvas pixels, the press point first, the
+/// release point last), as the polygon [`enclose`] takes (F-002 run 3): the events are
+/// stabilized (`stabilization` S: each becomes the mean of the last S events, B-007; CSP
+/// applies it to pen input only) and become the control points of the brush strokes'
+/// quadratic B-spline (B-002), flattened. The polygon closes back to the press point.
+/// Within 10 px on run 3's captures for S ≤ 20; S ≥ 50 is off (open, as for brushes).
+pub fn lasso(events: &[[f64; 2]], stabilization: u8) -> Vec<[f64; 2]> {
+    lasso_with(events, stabilization, true)
+}
+
+/// [`lasso`] while the pointer is still down: without the catch-up at release, so the line
+/// lags behind the pen as CSP's does (seen in F-002 run 3).
+pub fn lasso_live(events: &[[f64; 2]], stabilization: u8) -> Vec<[f64; 2]> {
+    lasso_with(events, stabilization, false)
+}
+
+fn lasso_with(events: &[[f64; 2]], stabilization: u8, released: bool) -> Vec<[f64; 2]> {
+    use brush::path::{Pt, dedup, spline, stabilize, stabilize_live};
+    let pts: Vec<Pt> = events.iter().map(|&[x, y]| Pt { x, y, p: 1.0 }).collect();
+    let stab = if released {
+        stabilize(&pts, stabilization)
+    } else {
+        stabilize_live(&pts, stabilization)
+    };
+    spline(&dedup(stab)).iter().map(|q| [q.x, q.y]).collect()
+}
+
+/// Enclose and fill (F-002): the area filled by a lasso polygon `pts` (canvas pixels, see
+/// [`lasso`]) on `reference` (straight RGBA). The image is divided into regions (4-connected, by Target
 /// color, see [`enclosed_regions`]); every region lying **entirely inside the lasso** is
 /// filled, outlines included, then grown by Area scaling. The rules are Paint unfilled
 /// area's (F-002 run 2 = F-003 run 3), with the lasso's inside as the painted area.
 ///
 /// Not modelled (open): Close gap (it did not hold a 10 px gap in run 1), the reference
-/// options, anti-aliasing without scaling (binary), the lasso's Stabilization (CSP rounds
-/// its corners).
+/// options, anti-aliasing without scaling (binary).
 pub fn enclose(reference: &[u8], w: u32, h: u32, pts: &[[f64; 2]], p: &EncloseParams) -> Vec<u8> {
     let inside = polygon_inside(pts, w, h);
     enclosed_regions(reference, w, h, &inside, &inside, p)

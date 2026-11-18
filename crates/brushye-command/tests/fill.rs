@@ -206,6 +206,17 @@ fn enclose_and_fill() {
         s.run_line("fill.enclose L2 points=[5,5;45,5;45,35] color=#ff0000 tolerance=120")
             .is_err()
     );
+    assert!(
+        s.run_line("fill.enclose L2 points=[5,5;45,5;45,35] color=#ff0000 stabilization=101")
+            .is_err()
+    );
+    // Stabilization (pen input) smooths the events before the spline: a lasso of only the
+    // four corners and S 6 shrinks to well inside the square, which then isn't filled.
+    run(
+        &mut s,
+        "fill.enclose L2 points=[5,5;45,5;45,35;5,35;5,5] color=#ff0000 stabilization=6",
+    );
+    assert_eq!(q(&mut s, "?layer.pixel L2 x=20 y=20")[3], 0);
     let r = Session::replay(&s.journal_text()).unwrap_or_else(|e| panic!("{}", e.msg));
     let h = |s: &Session| s.document().map(|d| d.content_hash());
     assert_eq!(h(&r), h(&s));

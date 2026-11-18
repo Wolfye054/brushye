@@ -34,6 +34,9 @@ pub(super) struct Gesture {
     /// area stroke's samples).
     t0: std::time::Instant,
     times: Vec<u32>,
+    /// Drawn with the pen: Enclose and fill applies Stabilization to pen input only (F-002
+    /// run 3).
+    pen: bool,
 }
 
 /// The selection border, computed once per document version.
@@ -197,6 +200,7 @@ impl App {
                     moving: mode == SelectMode::New && inside,
                     t0: std::time::Instant::now(),
                     times: vec![0],
+                    pen: self.pen.near,
                 });
             }
         }
@@ -282,7 +286,7 @@ impl App {
                     .iter()
                     .map(|p| [round(p[0]), round(p[1])])
                     .collect();
-                self.enclose_fill(Points(points));
+                self.enclose_fill(Points(points), g.pen);
             }
             SubKind::FillUnfilled => {
                 let samples = g
@@ -430,8 +434,28 @@ impl App {
                     };
                     ants(&painter, &pts);
                 }
-                SubKind::Lasso | SubKind::FillEnclose => {
+                SubKind::Lasso => {
                     let pts: Vec<Pos2> = g.points.iter().map(|&p| self.screen(p)).collect();
+                    ants(&painter, &pts);
+                }
+                SubKind::FillEnclose => {
+                    // The lasso as it will fill: the events' B-spline, stabilized for the pen
+                    // (F-002 run 3).
+                    let stab = if g.pen {
+                        self.ui
+                            .tools
+                            .sets
+                            .get(&ToolId::Fill)
+                            .and_then(|s| s.current())
+                            .and_then(|s| s.preset.stabilization)
+                            .unwrap_or(0)
+                    } else {
+                        0
+                    };
+                    let pts: Vec<Pos2> = brushye_command::core::fill::lasso_live(&g.points, stab)
+                        .iter()
+                        .map(|&p| self.screen(p))
+                        .collect();
                     ants(&painter, &pts);
                 }
                 SubKind::FillUnfilled => {
@@ -671,7 +695,7 @@ impl App {
 
 impl App {
     /// The end of an Enclose and fill lasso: one `fill.enclose` with the sub tool's settings.
-    fn enclose_fill(&mut self, points: Points) {
+    fn enclose_fill(&mut self, points: Points, pen: bool) {
         let Some(sub) = self
             .ui
             .tools
@@ -695,6 +719,8 @@ impl App {
             layer,
             points,
             color: brushye_command::core::Rgba8([rgb[0], rgb[1], rgb[2], 255]),
+            // CSP stabilizes the lasso for pen input only (F-002 run 3).
+            stabilization: if pen { p.stabilization } else { None },
             target: p.target,
             tolerance: p.tolerance,
             aa: Some(p.aa.is_some_and(|a| a != Aa::None)),
@@ -777,6 +803,7 @@ impl App {
                 moving: false,
                 t0: std::time::Instant::now(),
                 times: vec![0],
+                pen: self.pen.near,
             });
             return;
         }

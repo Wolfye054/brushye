@@ -1,11 +1,11 @@
 //! Enclose and fill against CSP 1.13.2 exports (F-002 runs 1, 2). Inputs are our generated images
-//! (`data/inputs/en1`, `en2`, `un2`); each export's alpha is the fill on an empty layer. CSP's lassos
-//! were rectangles drawn with the mouse; every shape is at least 10 px from them, so the
-//! nominal rectangles stand in exactly.
+//! (`data/inputs/en1`, `en2`, `un2`, `wh`); each export's alpha is the fill on an empty layer.
+//! CSP's lassos were drawn with the mouse (runs 1, 2: rectangles, 8 events per side, see
+//! [`rect`]) or the pen (run 3); the lasso is the events' B-spline ([`lasso`]).
 
 mod common;
 
-use brushye_core::fill::{EncloseParams, EncloseTarget, enclose};
+use brushye_core::fill::{EncloseParams, EncloseTarget, enclose, lasso};
 use common::Img;
 
 fn rgba(name: &str) -> Vec<u8> {
@@ -25,8 +25,23 @@ fn alpha(name: &str) -> Vec<u8> {
         .collect()
 }
 
+/// The mouse events of a rectangular lasso as the harness drew it (`h.sh` `lasso`): press at
+/// (x0, y0), then 8 moves along each side clockwise and back to the start, each at
+/// `corner + (next − corner)·k / 8` in integers (truncated toward zero), then release. Mouse
+/// input is not stabilized (run 3), so the polygon is the events' B-spline.
 fn rect(x0: f64, y0: f64, x1: f64, y1: f64) -> Vec<[f64; 2]> {
-    vec![[x0, y0], [x1, y0], [x1, y1], [x0, y1]]
+    let c = [[x0, y0], [x1, y0], [x1, y1], [x0, y1], [x0, y0]].map(|[x, y]| [x as i64, y as i64]);
+    let mut ev = vec![c[0]];
+    for s in c.windows(2) {
+        for k in 1..=8 {
+            ev.push([
+                s[0][0] + (s[1][0] - s[0][0]) * k / 8,
+                s[0][1] + (s[1][1] - s[0][1]) * k / 8,
+            ]);
+        }
+    }
+    let ev: Vec<[f64; 2]> = ev.iter().map(|&[x, y]| [x as f64, y as f64]).collect();
+    lasso(&ev, 0)
 }
 
 fn diff(got: &[u8], want: &[u8]) -> usize {
@@ -90,9 +105,8 @@ type Case<'a> = (String, &'a [u8], &'a [[f64; 2]], EncloseParams);
 /// Run 2: Target color and Tolerance on F-003's `un2` (rows A / B, plain white W, plain
 /// transparent T, the white/transparent boundary X) and `en2` (R1, R2), Area scaling off.
 /// `_t<t>`: the default target at tolerance t; `_g<i>`: Target color item i at tolerance 80.
-/// Exact, except "All enclosed areas including transparency" (item 9) where it adds the
-/// opaque pixels inside the lasso: CSP's lasso has rounded corners (Stabilization 6), the
-/// nominal rectangle does not, so a few pixels at the corners differ.
+/// Exact, except "All enclosed areas including transparency" (item 9), which adds the opaque
+/// pixels inside the lasso: the lasso's own edge, within 4 px (run 3's model).
 #[test]
 fn target_color_and_tolerance() {
     let a = rect(20.0, 80.0, 795.0, 185.0);
@@ -139,15 +153,64 @@ fn target_color_and_tolerance() {
         let got = enclose(img, 800, 800, pts, p);
         let want = alpha(&format!("enclose/run2/{name}.png"));
         let d = diff(&got, &want);
-        // Only where the lasso's corners are rounded: extra pixels of ours, none missing.
-        let missing = got.iter().zip(&want).filter(|(g, w)| g < w).count();
-        let allowed = if name.ends_with("_g9") { 160 } else { 0 };
-        if d > allowed || missing > 0 {
-            bad.push(format!("{name}: {d} differ, {missing} missing"));
+        let allowed = if name.ends_with("_g9") { 4 } else { 0 };
+        if d > allowed {
+            bad.push(format!("{name}: {d} differ"));
         }
         if d > 0 {
             eprintln!("{name}: {d}");
         }
     }
+    assert!(bad.is_empty(), "{bad:?}");
+}
+
+/// Run 3: the lasso's shape. Plain white with "All enclosed areas including transparency", so
+/// the fill is the lasso's inside; mouse (`S…`, never stabilized) and pen (`P<S>_…`) lassos
+/// with their logged events. Within 10 px for S ≤ 20; S 50 and 100 are open (as for brushes,
+/// B-007) and skipped.
+#[test]
+fn lasso_shape_and_stabilization() {
+    let img = rgba("inputs/wh.png");
+    let p = EncloseParams {
+        target: EncloseTarget::EnclosedIncludingTransparent,
+        scale: 0,
+        ..EncloseParams::default()
+    };
+    let path = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../specs/behavior/fill/data/enclose/run3/events.txt"
+    );
+    let text = std::fs::read_to_string(path).unwrap();
+    let mut bad = Vec::new();
+    let mut n = 0;
+    for line in text.lines() {
+        let (name, ev) = line.split_once(' ').unwrap();
+        let events: Vec<[f64; 2]> = ev
+            .split(';')
+            .map(|e| {
+                let (x, y) = e.split_once(',').unwrap();
+                [x.parse().unwrap(), y.parse().unwrap()]
+            })
+            .collect();
+        let stab: u8 = if name.starts_with('P') {
+            name[1..name.find('_').unwrap()]
+                .trim_end_matches('b')
+                .parse()
+                .unwrap()
+        } else {
+            0
+        };
+        if stab >= 50 {
+            continue;
+        }
+        let got = enclose(&img, 800, 800, &lasso(&events, stab), &p);
+        let want = alpha(&format!("enclose/run3/{name}.png"));
+        let d = diff(&got, &want);
+        if d > 10 {
+            bad.push(format!("{name}: {d}"));
+        }
+        n += 1;
+    }
+    assert_eq!(n, 18);
     assert!(bad.is_empty(), "{bad:?}");
 }

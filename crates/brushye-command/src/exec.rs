@@ -1142,6 +1142,10 @@ fn edit(d: &mut Document, cmd: &Command, pressure_curve: &Curve) -> Result<(), E
             if !(0.0..=100.0).contains(&t) {
                 return Err(ExecError(format!("tolerance {t} is not in 0..=100")));
             }
+            let stab = p.stabilization.unwrap_or(0);
+            if stab > 100 {
+                return Err(ExecError(format!("stabilization {stab} is not in 0..=100")));
+            }
             let scale = p.scale.unwrap_or(10);
             if !(-500..=500).contains(&scale) {
                 return Err(ExecError(format!(
@@ -1157,7 +1161,8 @@ fn edit(d: &mut Document, cmd: &Command, pressure_curve: &Curve) -> Result<(), E
             };
             let (w, h) = (d.width, d.height);
             let reference = fill_reference(d, p.layer, Some(p.refer.unwrap_or(FillRef::All)))?;
-            let mut cov = brushye_core::fill::enclose(&reference, w, h, &p.points.0, &ep);
+            let lasso = brushye_core::fill::lasso(&p.points.0, stab);
+            let mut cov = brushye_core::fill::enclose(&reference, w, h, &lasso, &ep);
             if let Some(o) = p.opacity {
                 if o > 100 {
                     return Err(DocError::OpacityOutOfRange(u32::from(o)).into());

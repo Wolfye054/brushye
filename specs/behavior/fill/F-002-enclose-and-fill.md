@@ -1,8 +1,8 @@
 # F-002 Fill tool: Enclose and fill
 - Status: **implemented** (2026-11-16: `fill.enclose`, the Enclose and fill sub tool;
   exact on all 29 run 1 captures; 2026-11-18: run 2's rules, exact on 53 of its 56
-  captures, the other three differ only at the lasso's rounded corners;
-  `crates/brushye-core/tests/observed_enclose.rs`) /
+  captures; the lasso's shape (run 3): run 2's other three within 4 px, run 3's captures
+  with S ≤ 20 within 10 px; `crates/brushye-core/tests/observed_enclose.rs`) /
   **observed** (run 1: settings, the region rule, Target color; run 2: Target color and
   Tolerance with F-003's `un2`; run 3: the lasso's shape and Stabilization; open items below)
 - CSP version: 1.13.2 (PRO, 64-bit, build 202301210208)
@@ -171,11 +171,18 @@ Results (CSP px = filled pixels; model below):
 
 ## Implementation notes (Brushye)
 - `brushye_core::fill::enclose` and the command `fill.enclose LAYER points=[x,y;…]
-  color=#rrggbb [target= tolerance= aa= scale= scale_mode= opacity= refer=]`; the command's
-  defaults are the sub tool's (Treat semi-transparent as transparent, tolerance 30, no
-  anti-aliasing, To darkest pixel 10, the visible image). The app draws a lasso with the
-  Enclose and fill sub tool and sends one `fill.enclose` on release; its Tool property has
-  the Target color row.
+  color=#rrggbb [stabilization= target= tolerance= aa= scale= scale_mode= opacity= refer=]`;
+  the command's defaults are the sub tool's (Treat semi-transparent as transparent, tolerance
+  30, no anti-aliasing, To darkest pixel 10, the visible image) except stabilization (0).
+  `points` are the input events; the app draws a lasso with the Enclose and fill sub tool
+  and sends one `fill.enclose` on release, with the sub tool's Stabilization (preset 6) only
+  when the pen drew it. Its Tool property has the Target color row; the preview shows the
+  lasso as it will fill (`fill::lasso_live`: the pen's line lags, as in CSP).
+- The lasso (run 3): `fill::lasso(events, S)` = `brush::path::stabilize` (B-007's moving
+  mean, with the catch-up at release) then `brush::path::spline` (B-002), flattened; the
+  polygon closes back to the press point. S ≥ 50 inherits B-007's open rule.
+- Journals written before 2026-11-18 replay with the lasso's B-spline instead of the polygon
+  through the points (a fidelity fix, D-021).
 - Regions are 4-connected. "Inside the lasso" is a pixel's centre inside the polygon
   (even-odd). Area scaling and its smoothing are F-001's.
 - Target color and tolerance are F-003 run 3's rules (shared code with Paint unfilled
@@ -186,9 +193,6 @@ Results (CSP px = filled pixels; model below):
   transparent pixels together, others only with exactly equal RGBA. Except / including
   transparency: two classes (transparent / not); "including" adds every non-transparent
   pixel inside the lasso.
-- Known difference: the lasso is used as drawn (a polygon through the events); CSP's lasso
-  is the B-002 spline of the events (run 3), so "including" fills a few more corner pixels
-  than CSP (run 2: 157, 114, 6 px).
 - Chosen, not observed: Close gap has no effect; anti-aliasing without area scaling gives
   the binary area.
 

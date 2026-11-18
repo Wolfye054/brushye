@@ -402,8 +402,9 @@ params! {
     /// Enclose and fill: fill every region lying entirely inside a lasso (F-002).
     pub struct FillEnclose {
         layer: LayerId = pos "Layer to paint (and to read with refer=layer)",
-        points: Points = key "Lasso corners [x,y;…] in canvas pixels; the last joins the first",
+        points: Points = key "Lasso input events [x,y;…] in canvas pixels, press point first; the lasso is their B-spline, closed (F-002 run 3)",
         color: Rgba8 = key "Colour #rrggbb",
+        stabilization: Option<u8> = opt "Stabilization 0..=100 applied to the events (default 0; CSP applies it to pen input only)",
         target: Option<brushye_core::fill::EncloseTarget> = opt "Target color (default semi_as_transparent, CSP's default)",
         tolerance: Option<f64> = opt "Tolerance in percent (default 30)",
         aa: Option<bool> = opt "Anti-aliasing (default false)",

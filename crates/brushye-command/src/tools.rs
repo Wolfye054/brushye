@@ -511,13 +511,14 @@ pub fn default_set(tool: Tool) -> Option<ToolSet> {
                             n,
                             // Refer other layers: Area scaling, To darkest pixel 10 (F-001).
                             // Enclose and fill: tolerance 30, Area scaling 10, no
-                            // anti-aliasing, Treat semi-transparent as transparent (F-002).
+                            // anti-aliasing, Treat semi-transparent as transparent,
+                            // Stabilization 6 (F-002).
                             preset(match *k {
                                 SubKind::FillOthers => {
                                     "size=10.0 tolerance=10.0 close_gap=2 scale=10 scale_mode=darkest"
                                 }
                                 SubKind::FillEnclose => {
-                                    "size=10.0 tolerance=30.0 close_gap=2 scale=10 scale_mode=darkest aa=none target=semi_as_transparent"
+                                    "size=10.0 tolerance=30.0 close_gap=2 scale=10 scale_mode=darkest aa=none target=semi_as_transparent stabilization=6"
                                 }
                                 // Paint unfilled area: brush 20, tolerance 80, no Area
                                 // scaling, no anti-aliasing (F-003).

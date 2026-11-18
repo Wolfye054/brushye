@@ -284,8 +284,9 @@ Fill the regions inside a lasso (Enclose and fill).
 | Parameter | Kind | Form | Description |
 |---|---|---|---|
 | `layer` | layer id | positional | Layer to paint (and to read with refer=layer) |
-| `points` | points [x,y;…] | required `key=` | Lasso corners [x,y;…] in canvas pixels; the last joins the first |
+| `points` | points [x,y;…] | required `key=` | Lasso input events [x,y;…] in canvas pixels, press point first; the lasso is their B-spline, closed (F-002 run 3) |
 | `color` | colour | required `key=` | Colour #rrggbb |
+| `stabilization` | u8 | optional `key=` | Stabilization 0..=100 applied to the events (default 0; CSP applies it to pen input only) |
 | `target` | target color (all\|transparent\|around_transparent\|black\|around_black\|white_transparent\|around_white_transparent\|semi_as_transparent\|enclosed_except_transparent\|enclosed_including_transparent) | optional `key=` | Target color (default semi_as_transparent, CSP's default) |
 | `tolerance` | f64 | optional `key=` | Tolerance in percent (default 30) |
 | `aa` | bool | optional `key=` | Anti-aliasing (default false) |
